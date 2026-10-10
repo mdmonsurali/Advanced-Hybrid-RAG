@@ -158,43 +158,31 @@ Each service lists its routes in its `main.py` module docstring:
 
 ---
 
-## Demo
+## UI pages
 
 ### Administration (master account)
 
 The **master** account is the un-deletable super-admin seeded from `MASTER_USERNAME` / `MASTER_PASSWORD` on first boot. From the Administration page it can create users and admins, rename / change role / reset password / disable / delete any account (except itself), and the Profile dropdown shows the role beside the avatar. Regular admins see only `user` rows in the same table; the master and other admins are hidden from them.
 
-![Master account Administration page with Profile dropdown open](demo-ui/Demo-ui-(Master-Account-Administration).png)
-
 ### Single mode
 
 Upload one file and see Markdown, DOCX preview, and JSON side-by-side.
-
-![Single mode](demo-ui/Demo-ui-(Single).png)
 
 ### Batch mode
 
 Drop multiple files; each row streams its own status and exposes download buttons as soon as it finishes.
 
-![Batch mode](demo-ui/Demo-ui-(Batch).png)
-
 ### DOCX preview
 
 Generated Word document rendered inline (DOCX → PDF via LibreOffice).
-
-![DOCX preview](demo-ui/Demo-ui-(Docx%20Preview%20ui).png)
 
 ### MinIO object store
 
 Uploads, generated artifacts (MD / JSON / DOCX), picture crops and each document's `meta.json` live under `documents/{uuid}/`; the RAG index registry lives under `rag/{uuid}/index.json`.
 
-![MinIO console](demo-ui/Demo-ui-(Minio%20S3%20ui).png)
-
 ### Task history
 
 Every OCR'd document is listed under `/history`, scoped to the logged-in user, with downloads (MD, DOCX, JSON, source) and a **Shared** toggle that makes the document searchable by every user in Chat.
-
-![Task History page](demo-ui/Task%20History.png)
 
 ## Notes
 
