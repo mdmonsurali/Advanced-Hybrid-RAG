@@ -72,10 +72,11 @@ async def route(plan: dict, identity: Identity, route_hint: list[str],
 
 
 async def retrieve(plan: dict, routes: list[str], broaden: bool, identity: Identity,
-                   external_evidence: list[dict] | None = None) -> dict:
+                   external_evidence: list[dict] | None = None,
+                   debug: bool = False) -> dict:
     return await _post("rag_service", f"{RAG_SERVICE_URL}/retrieve",
                        {"plan": plan, "routes": routes, "broaden": broaden,
-                        "external_evidence": external_evidence or []},
+                        "external_evidence": external_evidence or [], "debug": debug},
                        RAG_TIMEOUT, identity_headers(identity))
 
 

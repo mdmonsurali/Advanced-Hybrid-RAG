@@ -59,6 +59,7 @@ _HERE = Path(__file__).parent.resolve()
 TEMPLATES_DIR = _HERE / "templates"
 
 OCR_SERVICE_URL = os.environ.get("OCR_SERVICE_URL", "http://ocr_service:8001")
+RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://rag_service:8003")
 ORCHESTRATOR_SERVICE_URL = os.environ.get(
     "ORCHESTRATOR_SERVICE_URL", "http://orchestrator_service:8004",
 )
@@ -434,6 +435,12 @@ async def history_page(request: Request):
     return _render("history.html", user=user)
 
 
+@app.get("/ingest", response_class=HTMLResponse)
+async def ingest_page(request: Request):
+    user = _require_user(request)
+    return _render("ingest.html", user=user)
+
+
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     user = _require_user(request)
@@ -528,6 +535,30 @@ async def ocr(request: Request, file: UploadFile = File(...)):
 
 
 _ALLOWED_KINDS = {"source", "md", "json", "docx"}
+
+
+@app.get("/documents/{doc_id}/index-status")
+async def document_index_status(request: Request, doc_id: str):
+    """RAG indexing state for one document. Access is checked through
+    ocr_service first because rag_service /ingest/* has no identity check."""
+    user = _require_user(request)
+    did = quote(doc_id, safe="")
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            doc = await client.get(f"{OCR_SERVICE_URL}/documents/{did}",
+                                  headers=_identity_headers(user))
+            if doc.status_code != 200:
+                raise HTTPException(status_code=doc.status_code, detail="Document not found")
+            resp = await client.get(f"{RAG_SERVICE_URL}/ingest/{did}")
+        except httpx.HTTPError:
+            raise HTTPException(status_code=503, detail="Service is unavailable")
+    if resp.status_code == 404:
+        return {"status": "pending"}
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    d = resp.json()
+    return {"status": d.get("status", "pending"), "chunk_count": d.get("chunk_count"),
+            "points": d.get("points"), "error": d.get("error")}
 
 
 @app.get("/documents/{doc_id}/images/{filename}")

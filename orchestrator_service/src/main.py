@@ -73,6 +73,7 @@ def _options(payload: dict) -> dict:
         "route_hint": [r for r in raw.get("route_hint") or [] if r in _ROUTES],
         "deny_routes": [r for r in raw.get("deny_routes") or [] if r in _ROUTES],
         "answer_style": style,
+        "debug": bool(raw.get("debug")),
         "external_evidence": external,
     }
 

@@ -42,7 +42,7 @@ def _bullets(pairs: list[tuple[str, object]]) -> str:
     return "\n".join(f"- **{k}:** {v}" for k, v in pairs if v not in (None, "", [], {}))
 
 
-def _render(event: str, d: dict) -> str:
+def _render_base(event: str, d: dict) -> str:
     if event == "understanding":
         f = d.get("filters") or {}
         filters = ", ".join(f"{k}={v}" for k, v in f.items() if v)
@@ -89,6 +89,36 @@ def _render(event: str, d: dict) -> str:
             out += "\n- **Unsupported claims:**\n" + "\n".join(f"  - {c}" for c in d["unsupported_claims"])
         return out
     return f"```json\n{json.dumps(d, indent=2, ensure_ascii=False)}\n```"
+
+
+_DEBUG_SECTIONS = {
+    "retrieved": ("candidate_chunks", "All retrieved chunks (before reranking; score = first-stage fusion score)"),
+    "reranked": ("chunks", "Chunks kept after reranking (score = cross-encoder)"),
+    "compressed": ("sent_to_llm", "Exact evidence sent to the LLM (numbers match the [n] citations)"),
+}
+_CHUNK_CHARS = 1500
+
+
+def _chunks_md(title: str, chunks: list[dict]) -> str:
+    out = [f"\n\n#### {title} — {len(chunks)}"]
+    for c in chunks:
+        where = " · ".join(str(x) for x in (
+            c.get("route"), c.get("source"), f"p.{c['page']}" if c.get("page") else None,
+            " > ".join(c.get("headings") or []) or None, f"score {c.get('score')}") if x)
+        text = (c.get("text") or "").strip()
+        if len(text) > _CHUNK_CHARS:
+            text = text[:_CHUNK_CHARS] + f" … [{len(c['text']) - _CHUNK_CHARS} more chars]"
+        quoted = "\n".join("> " + line for line in text.splitlines()) or "> (empty)"
+        out.append(f"**[{c.get('n')}]** {where}\n\n{quoted}")
+    return "\n\n".join(out)
+
+
+def _render(event: str, d: dict) -> str:
+    out = _render_base(event, d)
+    key_title = _DEBUG_SECTIONS.get(event)
+    if key_title and d.get(key_title[0]):
+        out += _chunks_md(key_title[1], d[key_title[0]])
+    return out
 
 
 def _footer(final: dict) -> str:

@@ -193,14 +193,7 @@ default_avatar_file_url = ""
     name = "Documents"
     display_name = "Documents"
     icon_url = "/chat/public/favicon.png"
-    url = "/history"
-    target = "_self"
-
-[[UI.header_links]]
-    name = "Upload"
-    display_name = "Batch OCR"
-    icon_url = "/chat/public/favicon.png"
-    url = "/batch"
+    url = "/ingest"
     target = "_self"
 
 # [[UI.header_links]]

@@ -70,6 +70,7 @@ class RetrieveRequest(BaseModel):
     broaden: bool = False
     # Results of user-connected MCP tools (run by the UI), reranked with the rest.
     external_evidence: list[Evidence] = Field(default_factory=list)
+    debug: bool = False   # admins only: also return the pre-rerank candidates
 
 
 class RetrieveStats(BaseModel):
@@ -82,6 +83,7 @@ class RetrieveResponse(BaseModel):
     evidence: list[Evidence]
     route_status: dict[str, RouteStatus]
     stats: RetrieveStats
+    candidates: list[Evidence] = Field(default_factory=list)   # first-stage hits (debug only)
 
 
 class AccessUpdate(BaseModel):

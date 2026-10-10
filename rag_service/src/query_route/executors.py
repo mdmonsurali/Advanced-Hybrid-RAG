@@ -41,7 +41,8 @@ def _external_candidates(external: list[Evidence], question: str) -> list[tuple[
 
 async def execute(plan: QueryPlan, routes: list[str], identity: Identity,
                   broaden: bool = False,
-                  external: list[Evidence] | None = None) -> RetrieveResponse:
+                  external: list[Evidence] | None = None,
+                  debug: bool = False) -> RetrieveResponse:
     status: dict[str, str] = {}
     per_route: dict[str, int] = {}
     candidates: list[tuple[Evidence, str]] = []
@@ -89,5 +90,7 @@ async def execute(plan: QueryPlan, routes: list[str], identity: Identity,
     return RetrieveResponse(
         evidence=evidence,
         route_status=status,
+        candidates=(sorted((ev for ev, _ in candidates), key=lambda e: e.score, reverse=True)[:150]
+                    if debug else []),
         stats=RetrieveStats(candidates=len(candidates), reranked=len(reranked), per_route=per_route),
     )

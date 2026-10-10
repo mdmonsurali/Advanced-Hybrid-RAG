@@ -201,4 +201,5 @@ async def retrieve(body: RetrieveRequest, identity: Identity = Depends(require_u
     # Tool output comes from arbitrary servers: never treat it as the user's
     # own data, so validation keeps masking any PII it contains.
     external = [ev.model_copy(update={"owned": False}) for ev in body.external_evidence]
-    return await execute(body.plan, routes, identity, body.broaden, external)
+    return await execute(body.plan, routes, identity, body.broaden, external,
+                         debug=body.debug and identity.role in {"admin", "master"})

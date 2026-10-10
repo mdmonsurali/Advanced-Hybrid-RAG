@@ -65,6 +65,16 @@ def _insufficient(plan: dict, routes: list[str], route_status: dict) -> str:
     return f"Not enough evidence found. Searched: {searched}."
 
 
+def _dbg(on: bool, key: str, evs: list[dict] | None) -> dict:
+    """Full chunk text for the admin debug trace (empty unless enabled)."""
+    if not on or not evs:
+        return {}
+    return {key: [{"n": i, "id": e.get("id"), "route": e.get("route"), "source": e.get("source"),
+                   "page": e.get("page"), "score": round(e.get("score") or 0, 4),
+                   "headings": e.get("headings") or [], "text": e.get("text", "")}
+                  for i, e in enumerate(evs, start=1)]}
+
+
 async def run(question: str, history: list[dict], identity: Identity,
               options: dict | None = None) -> AsyncIterator[Event]:
     options = options or {}
@@ -72,6 +82,8 @@ async def run(question: str, history: list[dict], identity: Identity,
     deny_routes: list[str] = options.get("deny_routes") or []
     answer_style: str = options.get("answer_style") or "auto"
     external: list[dict] = options.get("external_evidence") or []
+    # Chunk-level trace is for admins only (rag_service re-checks the role).
+    debug = bool(options.get("debug")) and identity.role in {"admin", "master"}
     t0 = time.perf_counter()
     history = [h for h in history if h.get("role") in {"user", "assistant"}][-HISTORY_TURNS:]
     try:
@@ -109,19 +121,22 @@ async def run(question: str, history: list[dict], identity: Identity,
                     if RETRY_ADD_WEB and "web" in decision.get("available", []) and "web" not in routes:
                         routes = [*routes, "web"]
                 # STEP 5 executors + 6 + 7
-                retrieval = await clients.retrieve(plan, routes, broaden, identity, external)
+                retrieval = await clients.retrieve(plan, routes, broaden, identity, external, debug)
                 route_status = retrieval["route_status"]
                 yield "retrieved", {"attempt": attempt, "routes": routes, "broaden": broaden,
-                                    "route_status": route_status, **retrieval["stats"]}
+                                    "route_status": route_status, **retrieval["stats"],
+                                    **_dbg(debug, "candidate_chunks", retrieval.get("candidates"))}
                 yield "reranked", {"attempt": attempt, "kept": len(retrieval["evidence"]),
                                    "top": [{"source": e["source"], "route": e["route"],
                                             "page": e.get("page"), "score": round(e["score"], 3)}
-                                           for e in retrieval["evidence"][:5]]}
+                                           for e in retrieval["evidence"][:5]],
+                                   **_dbg(debug, "chunks", retrieval["evidence"])}
                 # STEP 8
                 compressed = await clients.compress(plan, retrieval["evidence"])
                 evidence = compressed["evidence"]
                 yield "compressed", {"attempt": attempt, "evidence": len(evidence),
-                                     **{k: compressed[k] for k in ("dropped", "merged", "extracted", "tokens")}}
+                                     **{k: compressed[k] for k in ("dropped", "merged", "extracted", "tokens")},
+                                     **_dbg(debug, "sent_to_llm", evidence)}
 
             # STEP 9
             yield "generating", {"attempt": attempt, "evidence": len(evidence), "direct": direct}

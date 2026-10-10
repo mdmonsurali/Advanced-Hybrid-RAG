@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Hybrid RAG · Ingest Documents</title>
+  <link rel="stylesheet" href="/static/style.css?v=11" />
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">ADVANCED HYBRID RAG</span>
+  <nav class="topbar-nav">
+    <a href="/chat/" class="nav-link">Chat</a>
+    <a href="/ocr" class="nav-link">Single</a>
+    <a href="/batch" class="nav-link">Batch</a>
+    <a href="/ingest" class="nav-link nav-ingest nav-active">Ingest</a>
+  </nav>
+  <!-- @@PROFILE_MENU@@ -->
+</div>
+
+<h1 class="page-title">Ingest Documents for RAG</h1>
+
+<main class="admin-shell">
+  <section class="admin-section">
+    <div id="drop" class="ing-drop">
+      <p>Drop PDF, DOCX, PNG or JPG files (or a whole folder) here. Each file is OCR'd, chunked, embedded and stored in the vector database.</p>
+      <input id="pick-files" type="file" multiple accept=".pdf,.docx,.png,.jpg,.jpeg" hidden />
+      <input id="pick-folder" type="file" webkitdirectory multiple hidden />
+      <button type="button" id="btn-files" class="ing-btn">Choose files</button>
+      <button type="button" id="btn-folder" class="ing-btn">Choose folder</button>
+      <p><label><input type="checkbox" id="share" /> Share with everyone (searchable by all users)</label></p>
+    </div>
+
+    <div class="ing-bar">
+      <span id="summary">No files yet</span>
+      <button type="button" id="btn-retry" class="ing-btn" hidden>Retry failed</button>
+      <button type="button" id="btn-clear" class="ing-btn" hidden>Clear finished</button>
+    </div>
+    <div class="ing-track"><div id="fill" class="ing-fill"></div></div>
+    <div id="list" class="ing-list"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const EXTS = [".pdf", ".docx", ".png", ".jpg", ".jpeg"];
+  const UPLOAD_CONCURRENCY = 2;
+  const POLL_MS = 3000;
+  const POLL_BATCH = 6;
+  const STORE = "ingest-queue-v1";
+
+  // item: {key, name, size, file?, docId?, status, msg}
+  // status: queued | ocr | indexing | done | error
+  const items = [];
+  const rows = new Map();
+  const seen = new Set();
+  const $ = (id) => document.getElementById(id);
+  let uploading = 0;
+
+  const LABEL = { queued: "Queued", ocr: "OCR…", indexing: "Embedding / indexing…", done: "Indexed", error: "Failed" };
+
+  function save() {
+    try {
+      const keep = items.filter((i) => i.docId && i.status !== "error")
+        .map(({ key, name, size, docId, status, msg }) => ({ key, name, size, docId, status, msg }));
+      localStorage.setItem(STORE, JSON.stringify(keep));
+    } catch (_) {}
+  }
+
+  function restore() {
+    let saved = [];
+    try { saved = JSON.parse(localStorage.getItem(STORE) || "[]"); } catch (_) {}
+    for (const s of saved) {
+      if (seen.has(s.key)) continue;
+      seen.add(s.key);
+      items.push(s);
+      addRow(s);
+    }
+    refresh();
+  }
+
+  function addRow(it) {
+    const row = document.createElement("div");
+    row.className = "ing-row";
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = it.name;
+    const st = document.createElement("span"); st.className = "st";
+    row.append(nm, st);
+    $("list").appendChild(row);
+    rows.set(it.key, { row, st });
+    paint(it);
+  }
+
+  function paint(it) {
+    const r = rows.get(it.key);
+    if (!r) return;
+    r.row.className = "ing-row " + (it.status === "done" ? "done" : it.status === "error" ? "error" : "");
+    r.st.textContent = it.status === "error" ? "Failed: " + (it.msg || "error") :
+      it.status === "done" && it.msg ? "Indexed · " + it.msg : LABEL[it.status];
+    r.row.title = it.msg || "";
+  }
+
+  function refresh() {
+    const n = items.length;
+    const c = (s) => items.filter((i) => i.status === s).length;
+    const done = c("done"), err = c("error");
+    $("summary").textContent = n ? `${done} / ${n} indexed · ${err} failed · ${n - done - err} in progress` : "No files yet";
+    $("fill").style.width = n ? Math.round(((done + err) / n) * 100) + "%" : "0";
+    $("btn-retry").hidden = !items.some((i) => i.status === "error" && i.file);
+    $("btn-clear").hidden = !(done || err);
+    save();
+  }
+
+  function set(it, status, msg) { it.status = status; it.msg = msg; paint(it); refresh(); }
+
+  function addFiles(files) {
+    for (const f of files) {
+      const ext = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
+      if (!EXTS.includes(ext)) continue;
+      const key = `${f.webkitRelativePath || f.name}|${f.size}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const it = { key, name: f.webkitRelativePath || f.name, size: f.size, file: f, status: "queued" };
+      items.push(it);
+      addRow(it);
+    }
+    refresh();
+    pump();
+  }
+
+  async function upload(it) {
+    set(it, "ocr");
+    try {
+      const form = new FormData();
+      form.append("file", it.file, it.file.name);
+      const r = await fetch("/ocr", { method: "POST", body: form, credentials: "same-origin" });
+      if (!r.ok) {
+        let d = ""; try { d = (await r.json()).detail || ""; } catch (_) {}
+        throw new Error(d || `HTTP ${r.status}`);
+      }
+      const body = await r.json();
+      it.docId = body.document_id;
+      if ($("share").checked) {
+        fetch(`/documents/${encodeURIComponent(it.docId)}/access`, {
+          method: "PATCH", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_level: "shared" }),
+        }).catch(() => {});
+      }
+      set(it, "indexing");
+    } catch (e) {
+      set(it, "error", e.message);
+    }
+  }
+
+  function pump() {
+    while (uploading < UPLOAD_CONCURRENCY) {
+      const it = items.find((i) => i.status === "queued" && i.file);
+      if (!it) return;
+      uploading++;
+      upload(it).finally(() => { uploading--; pump(); });
+    }
+  }
+
+  async function pollOne(it) {
+    try {
+      const r = await fetch(`/documents/${encodeURIComponent(it.docId)}/index-status`, { credentials: "same-origin" });
+      if (r.status === 404) return set(it, "error", "document no longer exists");
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d.status === "ok") set(it, "done", d.chunk_count != null ? `${d.chunk_count} chunks` : "");
+      else if (d.status === "error") set(it, "error", d.error || "indexing failed");
+    } catch (_) {}
+  }
+
+  async function pollLoop() {
+    const pending = items.filter((i) => i.status === "indexing" && i.docId).slice(0, POLL_BATCH);
+    await Promise.all(pending.map(pollOne));
+    setTimeout(pollLoop, POLL_MS);
+  }
+
+  $("btn-files").onclick = () => $("pick-files").click();
+  $("btn-folder").onclick = () => $("pick-folder").click();
+  for (const id of ["pick-files", "pick-folder"]) {
+    $(id).onchange = (e) => { addFiles([...e.target.files]); e.target.value = ""; };
+  }
+  const drop = $("drop");
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = async (e) => {
+    e.preventDefault(); drop.classList.remove("over");
+    const files = [];
+    const walk = async (entry) => {
+      if (entry.isFile) files.push(await new Promise((res, rej) => entry.file(res, rej)));
+      else if (entry.isDirectory) {
+        const rd = entry.createReader();
+        for (;;) {
+          const batch = await new Promise((res, rej) => rd.readEntries(res, rej));
+          if (!batch.length) break;
+          for (const c of batch) await walk(c);
+        }
+      }
+    };
+    const entries = [...e.dataTransfer.items].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (entries.length) { for (const en of entries) await walk(en); } else files.push(...e.dataTransfer.files);
+    addFiles(files);
+  };
+
+  $("btn-retry").onclick = () => {
+    for (const it of items) if (it.status === "error" && it.file) { it.status = "queued"; paint(it); }
+    refresh(); pump();
+  };
+  $("btn-clear").onclick = () => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.status === "done" || it.status === "error") {
+        rows.get(it.key)?.row.remove(); rows.delete(it.key); seen.delete(it.key); items.splice(i, 1);
+      }
+    }
+    refresh();
+  };
+
+  window.addEventListener("beforeunload", (e) => {
+    if (items.some((i) => i.status === "queued" || i.status === "ocr")) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  restore();
+  pollLoop();
+})();
+</script>
+</body>
+</html>
