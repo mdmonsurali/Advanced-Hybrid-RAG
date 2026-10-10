@@ -1,0 +1,20 @@
+
+# Output artifacts
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+.claude
+
+# Sample/test data
+*.pdf
+ocr_*.json
+# Secrets (Google Drive OAuth client + token)
+secrets/*
+!secrets/gdrive/
+secrets/gdrive/*
+!secrets/gdrive/.gitkeep
+
+# Chainlit runtime files (chat uploads)
+.files/

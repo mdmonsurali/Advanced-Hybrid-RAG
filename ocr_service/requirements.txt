@@ -1,0 +1,17 @@
+# Docling standard pipeline (layout + TableFormer + RapidOCR). torch/torchvision
+# are pre-installed as CPU wheels by the Dockerfile.
+docling[rapidocr]==2.135.0
+# rapidocr 3.10.0 dropped PP_OCRV6_LANGS, which docling 2.135.0 imports.
+rapidocr==3.9.2
+
+# FastAPI app
+fastapi==0.136.3
+uvicorn[standard]==0.37.0
+python-multipart==0.0.20
+httpx==0.28.1
+
+# Document & image processing (pypdfium2 comes with docling)
+pillow==11.3.0
+
+# Storage layer
+minio==7.2.20

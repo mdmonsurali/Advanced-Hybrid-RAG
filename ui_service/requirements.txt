@@ -1,0 +1,8 @@
+fastapi==0.143.0
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+python-multipart==0.0.32
+
+# Chat UI (mounted at /chat) + chat history in MinIO
+chainlit==2.12.0
+minio==7.2.20

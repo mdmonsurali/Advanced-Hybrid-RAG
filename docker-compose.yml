@@ -1,0 +1,300 @@
+name: advanced-hybrid-rag
+
+services:
+  # â”€â”€ Frontend + auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  ui_service:
+    build:
+      context: ./ui_service
+      dockerfile: Dockerfile
+    image: ahr-ui:latest
+    container_name: ui_service
+    ports:
+      - "${UI_SERVICE_PORT:-8000}:8000"
+    environment:
+      - OCR_SERVICE_URL=http://ocr_service:8001
+      - AUTH_SERVICE_URL=http://auth_service:8002
+      - ORCHESTRATOR_SERVICE_URL=http://orchestrator_service:8004
+      - RAG_SERVICE_URL=http://rag_service:8003
+      - LLM_SERVICE_URL=http://llm_service:8005
+      # Chainlit chat (mounted at /chat)
+      - CHAINLIT_AUTH_SECRET=${CHAINLIT_AUTH_SECRET:?CHAINLIT_AUTH_SECRET must be set}
+      - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-12}
+      - MCP_USER_ALLOWED_URLS=${MCP_USER_ALLOWED_URLS:-}
+      - GDRIVE_ALLOWED_ROLES=${GDRIVE_ALLOWED_ROLES:-master,admin}
+      - CHAT_HISTORY_ENABLED=${CHAT_HISTORY_ENABLED:-true}
+      # MinIO (chat history under chat/)
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-changeme}
+      - MINIO_BUCKET=${MINIO_BUCKET:-ocr}
+      - MINIO_REGION=${MINIO_REGION:-us-east-1}
+      - MINIO_SECURE=${MINIO_SECURE:-false}
+    depends_on:
+      ocr_service:
+        condition: service_healthy
+      auth_service:
+        condition: service_healthy
+      orchestrator_service:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  auth_service:
+    build:
+      context: .
+      dockerfile: auth_service/Dockerfile
+    image: ahr-auth:latest
+    container_name: auth_service
+    ports:
+      - "${AUTH_SERVICE_PORT:-8002}:8002"
+    environment:
+      - MASTER_USERNAME=${MASTER_USERNAME:-${ADMIN_USERNAME:-master}}
+      - MASTER_PASSWORD=${MASTER_PASSWORD:-${ADMIN_PASSWORD:?MASTER_PASSWORD or ADMIN_PASSWORD must be set}}
+      - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-12}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - OCR_SERVICE_URL=http://ocr_service:8001
+    volumes:
+      - auth_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/auth/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # â”€â”€ Document ingestion (Docling OCR, CPU) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  ocr_service:
+    build:
+      context: .
+      dockerfile: ocr_service/Dockerfile
+    image: ahr-ocr:latest
+    container_name: ocr_service
+    environment:
+      - OCR_SERVICE_PORT=${OCR_SERVICE_PORT:-8001}
+      - DOCLING_DEVICE=${DOCLING_DEVICE:-cpu}
+      - DOCLING_OCR_ENGINE=${DOCLING_OCR_ENGINE:-rapidocr}
+      - DOCLING_OCR_LANG=${DOCLING_OCR_LANG:-}
+      - DOCLING_TABLE_MODE=${DOCLING_TABLE_MODE:-accurate}
+      - DOCLING_IMAGES_SCALE=${DOCLING_IMAGES_SCALE:-2.0}
+      - DOCLING_DO_FORMULA_ENRICHMENT=${DOCLING_DO_FORMULA_ENRICHMENT:-false}
+      - DOCLING_DO_CODE_ENRICHMENT=${DOCLING_DO_CODE_ENRICHMENT:-false}
+      - OCR_CONCURRENCY=${OCR_CONCURRENCY:-1}
+      - INCLUDE_PICTURES=${INCLUDE_PICTURES:-true}
+      - RAG_SERVICE_URL=http://rag_service:8003
+      # MinIO (document bytes + metadata)
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-changeme}
+      - MINIO_BUCKET=${MINIO_BUCKET:-ocr}
+      - MINIO_REGION=${MINIO_REGION:-us-east-1}
+      - MINIO_SECURE=${MINIO_SECURE:-false}
+      - MINIO_UPLOAD_CONCURRENCY=${MINIO_UPLOAD_CONCURRENCY:-8}
+    deploy:
+      resources:
+        limits:
+          memory: ${OCR_MEMORY_LIMIT:-8G}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - rag-network
+
+  # â”€â”€ RAG: data side (steps 1-2, 5-7, MCP servers) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  rag_service:
+    build:
+      context: .
+      dockerfile: rag_service/Dockerfile
+      args:
+        EMBED_MODEL: ${EMBED_MODEL:-BAAI/bge-m3}
+        RERANK_MODEL: ${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+    image: ahr-rag:latest
+    container_name: rag_service
+    environment:
+      - RAG_SERVICE_PORT=8003
+      - LLM_SERVICE_URL=http://llm_service:8005
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-chunks}
+      - EMBED_DEVICE=${EMBED_DEVICE:-cpu}
+      - RERANK_DEVICE=${RERANK_DEVICE:-cpu}
+      - BM25_LANGUAGE=${BM25_LANGUAGE:-english}
+      - RAG_CHUNK_TOKENS=${RAG_CHUNK_TOKENS:-400}
+      - RAG_RETRIEVE_K=${RAG_RETRIEVE_K:-30}
+      - RAG_RERANK_TOP_K=${RAG_RERANK_TOP_K:-8}
+      - RAG_RERANK_MIN_SCORE=${RAG_RERANK_MIN_SCORE:-0.15}
+      - RAG_SYNC_ON_STARTUP=${RAG_SYNC_ON_STARTUP:-true}
+      # MCP servers (mounted in this service at /mcp/gdrive and /mcp/websearch)
+      - MCP_TOKEN=${MCP_TOKEN:?MCP_TOKEN must be set}
+      - MCP_TIMEOUT_SEC=${MCP_TIMEOUT_SEC:-20}
+      - GDRIVE_ENABLED=${GDRIVE_ENABLED:-true}
+      - GDRIVE_AUTH=${GDRIVE_AUTH:-oauth}
+      - GDRIVE_ALLOWED_ROLES=${GDRIVE_ALLOWED_ROLES:-master,admin}
+      - GDRIVE_SECRETS_DIR=/secrets/gdrive
+      - WEBSEARCH_ENABLED=${WEBSEARCH_ENABLED:-true}
+      - WEBSEARCH_PROVIDER=${WEBSEARCH_PROVIDER:-ddgs}
+      - WEBSEARCH_API_KEY=${WEBSEARCH_API_KEY:-}
+      # MinIO (reads OCR output, writes rag/{doc}/index.json)
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-changeme}
+      - MINIO_BUCKET=${MINIO_BUCKET:-ocr}
+      - MINIO_REGION=${MINIO_REGION:-us-east-1}
+      - MINIO_SECURE=${MINIO_SECURE:-false}
+    volumes:
+      - ./secrets/gdrive:/secrets/gdrive:ro
+    deploy:
+      resources:
+        limits:
+          memory: ${RAG_MEMORY_LIMIT:-6G}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    depends_on:
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    networks:
+      - rag-network
+
+  # â”€â”€ LLM: SGLang (GPU) + task API (steps 2-4, 8-10 prompts & generation) â”€
+  llm_service:
+    build:
+      context: .
+      dockerfile: llm_service/Dockerfile
+      args:
+        HF_TOKEN: ${HF_TOKEN:-}
+        LLM_MODEL: ${LLM_MODEL:-LostGentoo/Qwen3.5-4B-AWQ}
+    image: ahr-llm:latest
+    container_name: llm_service
+    environment:
+      - LLM_SERVICE_PORT=8005
+      - LLM_MEM_FRACTION=${LLM_MEM_FRACTION:-0.85}
+      - LLM_CONTEXT_LEN=${LLM_CONTEXT_LEN:-8192}
+      - LLM_MAX_RUNNING=${LLM_MAX_RUNNING:-4}
+      - LLM_EXTRA_ARGS=${LLM_EXTRA_ARGS:---max-mamba-cache-size 8}
+      - RAG_ANSWER_TOKENS=${RAG_ANSWER_TOKENS:-1024}
+      - RAG_MIN_GROUNDED=${RAG_MIN_GROUNDED:-0.7}
+      - RAG_MASK_PII=${RAG_MASK_PII:-true}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
+    shm_size: '4gb'
+    ipc: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+      start_interval: 15s
+    networks:
+      - rag-network
+
+  # â”€â”€ Pipeline driver (steps 3-10, retry loop, SSE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  orchestrator_service:
+    build:
+      context: .
+      dockerfile: orchestrator_service/Dockerfile
+    image: ahr-orchestrator:latest
+    container_name: orchestrator_service
+    environment:
+      - ORCHESTRATOR_SERVICE_PORT=8004
+      - RAG_SERVICE_URL=http://rag_service:8003
+      - LLM_SERVICE_URL=http://llm_service:8005
+      - RAG_MAX_RETRIES=${RAG_MAX_RETRIES:-1}
+      - RAG_RETRY_ADD_WEB=${RAG_RETRY_ADD_WEB:-true}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      rag_service:
+        condition: service_healthy
+      llm_service:
+        condition: service_healthy
+    networks:
+      - rag-network
+
+  # â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  qdrant:
+    image: qdrant/qdrant:v1.19.2
+    container_name: qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z   # community MinIO build (minio/* left Docker Hub)
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme}
+      MINIO_BUCKET: ${MINIO_BUCKET:-ocr}
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" &&
+        mc mb --ignore-existing local/\"$$MINIO_BUCKET\" &&
+        echo 'minio bucket ready: '\"$$MINIO_BUCKET\"
+      "
+    restart: "no"
+    networks:
+      - rag-network
+
+volumes:
+  auth_data:
+  minio_data:
+  qdrant_data:
+
+networks:
+  rag-network:
+    driver: bridge

@@ -1,0 +1,29 @@
+# torch is pre-installed as a CPU wheel by the Dockerfile.
+
+# FastAPI app
+fastapi==0.143.0
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+pydantic==2.14.0
+
+# Chunking (DoclingDocument + HybridChunker)
+docling-core[chunking]==2.101.1
+
+# Embeddings: dense (bge-m3), cross-encoder reranker, sparse BM25
+sentence-transformers==6.1.0
+transformers==5.19.0
+fastembed==0.9.0
+
+# Vector DB
+qdrant-client==1.19.1
+
+# MCP servers + client
+fastmcp==4.1.0
+google-api-python-client==2.201.0
+google-auth==2.61.0
+ddgs==9.16.0
+trafilatura==2.3.1
+pypdf==6.19.0
+
+# Storage
+minio==7.2.20

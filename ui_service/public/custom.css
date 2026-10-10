@@ -1,0 +1,13 @@
+/* Advanced Hybrid RAG — Chainlit tweaks */
+
+/* Citation chips: Chainlit renders element references ([1], [2] …) as
+   a.element-link; give them the blue "source" look used across the app. */
+a.element-link {
+  background: hsl(217 70% 15%);
+  border: 1px solid hsl(221 83% 45%);
+  color: hsl(213 94% 68%);
+  text-transform: none;
+}
+
+/* Pipeline step outputs: keep tables compact. */
+.step table { font-size: 0.85em; }
