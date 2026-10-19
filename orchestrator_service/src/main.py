@@ -7,20 +7,28 @@ Exposes:
     GET  /health                    llm_service + rag_service reachability
     POST /chat   {question, history, options?}   SSE: one event per pipeline step, then `answer`
     POST /query  {question, history, options?}   JSON: final answer + the step trace
+    GET  /gpu/status                GPU swap state (tenant, leases, llm container)
+    POST /gpu/acquire/{tenant}      ?ttl=  block until llm|ocr owns the GPU -> {lease_id}
+    POST /gpu/renew/{lease_id}      extend a lease's TTL
+    POST /gpu/release/{lease_id}    end a lease
 
-options: {route_hint: [..], deny_routes: [..], answer_style, external_evidence: [Evidence]}
+options: {route_hint: [..], deny_routes: [..], answer_style, external_evidence: [Evidence],
+          session_id}   (session_id: the chat thread, groups its traces in Langfuse)
 """
 
 from __future__ import annotations
 
 import json as _json
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 
 import clients
+import gpu_swap
 import pipeline
+import tracing
 from identity import Identity, require_user
 
 log = logging.getLogger("orchestrator")
@@ -29,7 +37,15 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 MAX_QUESTION_CHARS = 4000
 
-app = FastAPI(title="Advanced Hybrid RAG — Orchestrator", version="1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    gpu_swap.arbiter.start()
+    yield
+    await gpu_swap.arbiter.stop()
+    tracing.shutdown()      # flush pending Langfuse spans and scores
+
+
+app = FastAPI(title="Advanced Hybrid RAG — Orchestrator", version="1.0", lifespan=lifespan)
 
 
 class _SilencePathsFilter(logging.Filter):
@@ -43,7 +59,7 @@ class _SilencePathsFilter(logging.Filter):
         return not any(f' {p} ' in msg for p in self._paths)
 
 
-logging.getLogger("uvicorn.access").addFilter(_SilencePathsFilter(("/health",)))
+logging.getLogger("uvicorn.access").addFilter(_SilencePathsFilter(("/health", "/gpu/renew")))
 
 
 def _sse(event: str, payload: dict) -> str:
@@ -75,6 +91,7 @@ def _options(payload: dict) -> dict:
         "answer_style": style,
         "debug": bool(raw.get("debug")),
         "external_evidence": external,
+        "session_id": str(raw["session_id"])[:200] if raw.get("session_id") else None,
     }
 
 
@@ -99,6 +116,8 @@ async def health():
     status = {"status": "ok" if llm_ok and rag_ok else "degraded",
               "llm_service": "ok" if llm_ok else "down",
               "rag_service": "ok" if rag_ok else "down"}
+    if gpu_swap.GPU_SWAP_ENABLED:
+        status["gpu"] = gpu_swap.arbiter.status()
     # The orchestrator itself is up either way; the UI shows the degraded parts.
     return status
 
@@ -133,3 +152,31 @@ async def query(payload: dict = Body(...), identity: Identity = Depends(require_
         else:
             trace.append({"event": event, "data": data})
     return {"answer": final, "trace": trace}
+
+
+# ── GPU swap leases (ocr_service, ui_service) ─────────────────────────────
+# Internal: called over the docker network, like rag_service /ingest/*.
+
+@app.get("/gpu/status")
+async def gpu_status():
+    return await gpu_swap.snapshot()
+
+
+@app.post("/gpu/acquire/{tenant}")
+async def gpu_acquire(tenant: str, ttl: float = gpu_swap.LEASE_TTL_SEC):
+    if tenant not in gpu_swap.TENANTS:
+        raise HTTPException(400, f"tenant must be one of {', '.join(gpu_swap.TENANTS)}")
+    lease_id = await gpu_swap.arbiter.acquire(tenant, ttl=max(10.0, min(ttl, 3600.0)))
+    return {"lease_id": lease_id, "tenant": tenant}
+
+
+@app.post("/gpu/renew/{lease_id}")
+async def gpu_renew(lease_id: str, ttl: float = gpu_swap.LEASE_TTL_SEC):
+    if not gpu_swap.arbiter.renew(lease_id, ttl=max(10.0, min(ttl, 3600.0))):
+        raise HTTPException(404, "lease not found or expired")
+    return {"lease_id": lease_id}
+
+
+@app.post("/gpu/release/{lease_id}", status_code=204)
+async def gpu_release(lease_id: str):
+    await gpu_swap.arbiter.release(lease_id)

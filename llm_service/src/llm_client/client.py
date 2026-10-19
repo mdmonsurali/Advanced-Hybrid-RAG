@@ -4,6 +4,11 @@ All task calls run with Qwen3.5's thinking mode switched off and, where a
 pydantic model is given, with SGLang's grammar-constrained JSON output
 (`response_format=json_schema`, compiled by xgrammar). A semaphore keeps the
 number of in-flight requests at the server's `--max-running-requests`.
+
+The OpenAI client is Langfuse's drop-in wrapper: every call is recorded as a
+generation (messages, output, token usage, latency) under the current
+observation, named after its prompt and linked to the prompt version used
+(see prompts/registry.py). It is a plain OpenAI client when tracing is off.
 """
 
 from __future__ import annotations
@@ -15,8 +20,10 @@ import re
 from typing import Type, TypeVar
 
 import httpx
-from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
+
+import tracing  # noqa: F401  (configures Langfuse before the wrapper loads)
+from langfuse.openai import AsyncOpenAI
 
 log = logging.getLogger("llm_service.client")
 
@@ -50,6 +57,18 @@ def _get_client() -> AsyncOpenAI:
     return _client
 
 
+def _langfuse_kwargs(messages: list[dict], name: str | None, attempt: int = 1) -> dict:
+    """Generation name, linked prompt version and model for the Langfuse wrapper.
+    Message lists built by prompts/ carry the prompt they were compiled from."""
+    prompt = getattr(messages, "prompt", None)
+    prompt_name = getattr(messages, "prompt_name", None)
+    out: dict = {"name": name or (prompt_name or "llm").removeprefix("rag/"),
+                 "metadata": {"llm_model": LLM_MODEL, "attempt": attempt}}
+    if prompt is not None:
+        out["langfuse_prompt"] = prompt
+    return out
+
+
 def _clean(text: str) -> str:
     """Drop any reasoning block and code fences the model may still emit."""
     text = _THINK_RE.sub("", text or "").strip()
@@ -59,22 +78,24 @@ def _clean(text: str) -> str:
 
 
 async def chat_text(messages: list[dict], *, temperature: float = 0.0,
-                    max_tokens: int = 1024) -> str:
+                    max_tokens: int = 1024, name: str | None = None) -> str:
     client = _get_client()
     assert _sem is not None
     async with _sem:
         resp = await client.chat.completions.create(
             model=MODEL_NAME,
-            messages=messages,
+            messages=list(messages),
             temperature=temperature,
             max_tokens=max_tokens,
             extra_body=_NO_THINKING,
+            **_langfuse_kwargs(messages, name),
         )
     return _clean(resp.choices[0].message.content or "")
 
 
 async def chat_json(messages: list[dict], schema: Type[T], *,
-                    temperature: float = 0.0, max_tokens: int = 1024) -> T:
+                    temperature: float = 0.0, max_tokens: int = 1024,
+                    name: str | None = None) -> T:
     """Grammar-constrained JSON call parsed into `schema`. Retries once at a
     slightly higher temperature before giving up."""
     client = _get_client()
@@ -88,11 +109,12 @@ async def chat_json(messages: list[dict], schema: Type[T], *,
         async with _sem:
             resp = await client.chat.completions.create(
                 model=MODEL_NAME,
-                messages=messages,
+                messages=list(messages),
                 temperature=temp,
                 max_tokens=max_tokens,
                 response_format=response_format,
                 extra_body=_NO_THINKING,
+                **_langfuse_kwargs(messages, name, attempt + 1),
             )
         raw = _clean(resp.choices[0].message.content or "")
         try:

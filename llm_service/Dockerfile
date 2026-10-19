@@ -6,7 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY llm_service/requirements.txt /workspace/llm_service/
-RUN pip3 install --no-cache-dir -r /workspace/llm_service/requirements.txt
+RUN pip3 install --no-cache-dir -r /workspace/llm_service/requirements.txt \
+    && python3 -c "import sglang, openai, opentelemetry.sdk.trace, langfuse.openai"
 
 # Pre-bake the Qwen3.5 weights into the image so cold start does not depend on
 # a runtime HuggingFace download. The MTP head is skipped (no speculative

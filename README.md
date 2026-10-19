@@ -8,8 +8,9 @@ groundedness before you see it.
 
 - **OCR / parsing:** [Docling](https://github.com/docling-project/docling) (CPU)
 - **LLM:** [LostGentoo/Qwen3.5-4B-AWQ](https://huggingface.co/LostGentoo/Qwen3.5-4B-AWQ) on [SGLang](https://github.com/sgl-project/sglang) (GPU)
-- **Retrieval:** Qdrant hybrid search (BAAI/bge-m3 dense + BM25 sparse, RRF fusion), then the BAAI/bge-reranker-v2-m3 cross-encoder
+- **Retrieval:** Qdrant hybrid search (Qwen3-Embedding-0.6B dense + BM25 sparse, RRF fusion), then the Qwen3-Reranker-0.6B reranker
 - **External sources:** Google Drive and web search as [FastMCP](https://github.com/jlowin/fastmcp) servers
+- **Observability:** self-hosted [Langfuse](https://langfuse.com) — one trace per question, answer scores, versioned prompts
 
 ## Architecture
 
@@ -45,27 +46,31 @@ groundedness before you see it.
 | **rag_service** | [`rag_service/`](rag_service/) | The data side: chunking, metadata, embeddings, Qdrant, query routing, hybrid retrieval, reranking, and the two MCP servers. |
 | **llm_service** | [`llm_service/`](llm_service/) | SGLang serving Qwen3.5-4B-AWQ plus a task API. All prompts and LLM calls live here: query analysis, document metadata, compression, answer generation, validation. |
 | **orchestrator_service** | [`orchestrator_service/`](orchestrator_service/) | Runs the query pipeline end to end, owns the validation retry loop, and streams every step to the chat over SSE. |
+| **langfuse_service** | [`langfuse_service/`](langfuse_service/) | Self-hosted Langfuse (web, worker, Postgres, ClickHouse, Redis; events in MinIO). Every question is one trace across orchestrator, rag and llm services; answers get validation and 👍/👎 scores; llm_service's prompts are versioned there. |
 | qdrant / minio | — | Vector store / object store. |
 
 ## The 10-step pipeline
 
 | # | Step | Where | How |
 |---|---|---|---|
-| 1 | **Ingestion** | `rag_service/src/ingestion`, `chunking_techniques/` | docling-core `HybridChunker`: splits along headings/sections, sized in tokens with the embedder's tokenizer, merges small neighbours. Tables become Markdown chunks that carry their caption and the paragraph that explains them; large tables are split by row groups with the header repeated. |
+| 1 | **Ingestion** | `rag_service/src/ingestion`, `chunking_techniques/` | docling-core `HybridChunker` for text: splits along headings/sections, sized in tokens with the embedder's tokenizer, merges small neighbours. Tables split across pages are stitched back into one table first. Tables become row-group chunks: each row is embedded as `Column: value` pairs (multi-level headers resolved to a path) while the LLM sees a Markdown table with the full header, the caption and the paragraph that explains it, each group citing its own page. Figures are described by the vision LLM (`/tasks/describe-figure`, cached per crop) and indexed with their caption, in-figure text and context. |
 | 2 | **Metadata** | `ingestion/metadata.py` + llm `/tasks/doc-metadata` | Every chunk carries `source, page_start/end, timestamp, doc_type, topic, language, headings, chunk_type, owner_id, access_level`. Document-level type, topic and summary come from one LLM call per document. |
 | 3 | **Query understanding** | `llm_service/src/generation/query_analysis.py` | Rewrites the question into a standalone question (using chat history), then classifies it: fact / comparison / troubleshooting / policy / summary / catalog / chitchat. Also extracts entities and date/type filters, and flags ambiguous questions for a clarifying question. |
 | 4 | **Query transformation** | same | Keyword rewrite, up to 3 expansions, decomposition into sub-questions (comparisons), and a **HyDE** passage used for dense search. |
 | 5 | **Query routing** | `rag_service/src/query_route/` | Rules first, then an LLM fallback. Routes: `docs` (vector store), `catalog` (document metadata: counts, lists), `gdrive` (Drive MCP), `web` (web-search MCP), `direct`. Routes run concurrently; a failing route is reported as `unavailable` and the others still answer. |
-| 6 | **Hybrid retrieval** | `hybrid_retrieval/search.py` | One Qdrant query per sub-question. Dense prefetches cover the rewritten query and the HyDE passage; a BM25 prefetch covers query + expansions. Results are fused with RRF and filtered by access (`owner == you OR shared`) plus the step-3 filters. |
-| 7 | **Reranking** | `hybrid_retrieval/rerank.py` | The cross-encoder scores pooled docs + Drive + web candidates against their (sub-)question. Keeps the top-k above a threshold, plus the best chunk per sub-question. |
+| 6 | **Hybrid retrieval** | `hybrid_retrieval/search.py` | One Qdrant query per sub-question. Dense prefetches cover the rewritten query (embedded with Qwen3-Embedding's query instruction) and the HyDE passage (embedded as a document); a BM25 prefetch covers query + expansions. Results are fused with RRF and filtered by access (`owner == you OR shared`) plus the step-3 filters. |
+| 7 | **Reranking** | `hybrid_retrieval/rerank.py` | Qwen3-Reranker-0.6B scores pooled docs + Drive + web candidates against their (sub-)question (probability of "yes, this answers it"). Keeps the top-k above a threshold, plus the best chunk per sub-question. |
 | 8 | **Context compression** | `llm_service/src/generation/compression.py` | Drops weak chunks and near-duplicates, merges adjacent chunks, and fits the token budget. Long chunks that don't fit are compressed extractively, keeping their citation number. |
 | 9 | **Prompt construction** | `llm_service/src/prompts/answer.py` | Assembles the system rules, intent-specific format, question and numbered evidence `[n] source p.X (date)`. Output is grammar-constrained JSON (`answer_markdown, citations, confidence, insufficient_evidence`). |
 | 10 | **Validation** | `llm_service/src/generation/validation.py` | Checks schema and citation validity, then claim-level groundedness via an LLM judge plus a safety flag. PII is masked unless it comes from your own documents. Low confidence → the orchestrator retries with broadened retrieval (filters dropped, more candidates, web added), then asks a clarifying question or answers "not enough evidence". |
 
 ## GPU budget (6 GB)
 
-Only **llm_service** touches the GPU. Docling, the embedder, BM25 and the
-reranker run on CPU, so plan for roughly 6–8 GB of host RAM.
+Only **llm_service** touches the GPU (unless `GPU_SWAP` is on, see below). Docling, the embedder, BM25 and the
+reranker run on CPU, so plan for roughly 8–10 GB of host RAM. The Qwen3
+embedder and reranker are loaded as float32 (`EMBED_DTYPE` / `RERANK_DTYPE`;
+their bf16 checkpoints run about 4x slower on most CPUs) and take about
+5 GB together, so rag_service's memory limit is 8G (`RAG_MEMORY_LIMIT`).
 
 The AWQ checkpoint keeps embeddings, linear-attention layers and the vision
 tower in BF16, so the weights take 3.85 GB of VRAM. On a Windows desktop
@@ -80,13 +85,35 @@ of it CUDA-graph capture. If SGLang reports "Not enough memory", raise
 `LLM_MEM_FRACTION` slightly, or lower `LLM_CONTEXT_LEN` to 4096. Do not add
 `--language-only`: in SGLang 0.5.10 it selects encoder-disaggregated mode.
 
+### GPU swap (`GPU_SWAP=true`)
+
+Docling on CPU is slow (minutes per long PDF), so OCR and the LLM can take
+turns on the GPU. `orchestrator_service/src/gpu_swap.py` owns the GPU and
+hands out leases to the `llm` or `ocr` tenant:
+
+- An upload stops `llm_service` (through the mounted docker socket) and
+  starts ocr_service's Docling worker process on CUDA (`/gpu/enable`).
+- Chat waits until the batch is done ("Waiting for GPU" step). After
+  `GPU_SWAP_IDLE_SEC` (30 s) without OCR, the worker process exits, which
+  frees all of its VRAM, and `llm_service` restarts (~5 min cold start).
+- Documents indexed while the LLM was off get heuristic metadata and
+  caption-only figures. Once the LLM is back the orchestrator calls
+  `/ingest/sync?upgrade_heuristic=true`, which redoes them with the LLM.
+- `GET /gpu/status` on the orchestrator shows the tenant, leases and swap
+  state. If the GPU path fails, OCR falls back to the CPU converter.
+
+The swap pays off for batches, not single files. `GPU_SWAP=false` keeps the
+old layout: OCR on CPU and the LLM always up.
+
 ## Running
 
 Requires Docker Compose and the NVIDIA container toolkit.
 
 ```bash
-# 1. Set MASTER_PASSWORD (and review the rest) in .env.
-#    MCP_TOKEN and CHAINLIT_AUTH_SECRET are pre-generated.
+# 1. cp .env.example .env, then replace every CHANGEME: MASTER_PASSWORD,
+#    MCP_TOKEN, CHAINLIT_AUTH_SECRET and the LANGFUSE_* secrets
+#    (`openssl rand -hex 32` works for all of them; the Langfuse keys
+#    must keep their pk-lf- / sk-lf- prefixes).
 # 2. Optional: connect Google Drive (see below).
 docker compose up -d --build
 ```
@@ -97,6 +124,7 @@ rag_service backfills the index for any documents already in MinIO.
 | Service | Port |
 |---|---|
 | ui_service | `${UI_SERVICE_PORT:-8000}` → open `http://localhost:8000` (chat at `/chat/`) |
+| Langfuse | `${LANGFUSE_PORT:-3000}` → `http://localhost:3000` (login: `LANGFUSE_INIT_USER_*`) |
 | auth_service | `${AUTH_SERVICE_PORT:-8002}` |
 | MinIO console | `${MINIO_CONSOLE_PORT:-9001}` |
 
@@ -149,6 +177,24 @@ them with `Authorization: Bearer $MCP_TOKEN`:
 Web search uses `ddgs` by default (no key). Set `WEBSEARCH_PROVIDER=tavily`
 or `brave` with `WEBSEARCH_API_KEY` for an API provider.
 
+### Observability (Langfuse)
+
+[`langfuse_service/`](langfuse_service/README.md) runs Langfuse next to the
+pipeline (about 5.5 GB RAM, no GPU). With the keys in `.env` nothing has to
+be set up: the project and its API keys are created on first start.
+
+- **Traces:** one `rag-chat` trace per question with steps 3 → 10 as nested
+  observations, every LLM call as a generation (messages, output, tokens,
+  latency, prompt version), retrieval hits and rerank scores. Grouped by user
+  and chat thread (Sessions view). Document ingestion is an `ingest-document` trace.
+- **Scores:** `outcome`, `groundedness`, `citations_valid`, `answer_confidence`
+  and `attempts` from validation; `user_feedback` from 👍/👎 in the chat.
+- **Prompts:** the system prompts are `rag/*` prompts in Langfuse. Choose the
+  version in `.env` with `PROMPT_SOURCE` (`langfuse` | `local`), `PROMPT_LABEL`
+  (e.g. `production`, `staging`) and `PROMPT_VERSIONS` (pins such as
+  `rag/answer:3`). If Langfuse is down the texts in the code are used.
+- **Off switch:** `LANGFUSE_TRACING_ENABLED=false`.
+
 ## Key routes
 
 Each service lists its routes in its `main.py` module docstring:
@@ -192,7 +238,10 @@ Every OCR'd document is listed under `/history`, scoped to the logged-in user, w
 - There is no SQL database. ocr_service and rag_service each keep an
   in-memory index of their MinIO metadata and are its only writers, so run a
   single replica of each. Back up the `minio_data`, `qdrant_data` and
-  `auth_data` volumes.
+  `auth_data` volumes (and `langfuse_postgres_data` / `langfuse_clickhouse_data`
+  to keep traces and prompt versions).
 - `layout.json` is a [DoclingDocument](https://docling-project.github.io/docling/concepts/docling_document/).
-  If you change `EMBED_MODEL`, use a new `QDRANT_COLLECTION`; the next sync
-  re-indexes every document.
+  If you change `EMBED_MODEL`, use a new `QDRANT_COLLECTION` (rag_service
+  refuses to start on a collection filled by another model); the next sync
+  re-indexes every document. Changes to chunking bump `CHUNKER_VERSION` in
+  `ingestion/pipeline.py`, which re-indexes the same way.

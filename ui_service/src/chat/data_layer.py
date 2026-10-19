@@ -7,6 +7,9 @@ Layout in the shared bucket:
     chat/elements/{thread_id}/{element_id}     element content (citation text, small files)
     chat/feedback/{feedback_id}.json           thumbs up/down (seed for evaluations)
 
+Feedback is also sent to Langfuse as a `user_feedback` score on the answer's
+trace (chat/feedback_scores.py).
+
 The user's auth id is used as both the Chainlit identifier and the persisted
 id, so history survives username changes. Threads are cached in memory and
 written through on every change; ui_service is the only writer.
@@ -30,6 +33,8 @@ from chainlit.user import PersistedUser, User
 from minio import Minio
 from minio.deleteobjects import DeleteObject
 from minio.error import S3Error
+
+from chat import feedback_scores
 
 log = logging.getLogger("ui_service.chat_history")
 
@@ -346,6 +351,7 @@ class MinioDataLayer(BaseDataLayer):
     async def upsert_feedback(self, feedback: Feedback) -> str:
         feedback_id = feedback.id or str(uuid.uuid4())
         thread_id = feedback.threadId or self._step_thread.get(feedback.forId)
+        trace_id = None
         if thread_id:
             async with self._lock(thread_id):
                 thread = await self._load(thread_id)
@@ -354,8 +360,10 @@ class MinioDataLayer(BaseDataLayer):
                         step["feedback"] = {"id": feedback_id, "forId": feedback.forId,
                                             "value": feedback.value, "comment": feedback.comment}
                         self._feedback_step[feedback_id] = step["id"]
+                        trace_id = (step.get("metadata") or {}).get("langfuse_trace_id")
                         await self._save(thread)
                         break
+        await feedback_scores.send(feedback_id, trace_id, feedback.value, feedback.comment)
         await self._put_json(f"chat/feedback/{feedback_id}.json", {
             "id": feedback_id, "threadId": thread_id, "forId": feedback.forId,
             "value": feedback.value, "comment": feedback.comment, "at": _now()})
@@ -372,6 +380,7 @@ class MinioDataLayer(BaseDataLayer):
                         step.pop("feedback", None)
                         await self._save(thread)
         await asyncio.to_thread(self._remove_prefix, f"chat/feedback/{feedback_id}.json")
+        await feedback_scores.delete(feedback_id)
         return True
 
     async def get_favorite_steps(self, user_id: str) -> List:

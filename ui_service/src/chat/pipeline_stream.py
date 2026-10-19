@@ -27,6 +27,7 @@ _TITLES = {
     "compressed": "8 · Compression",
     "generating": "9 · Generation",
     "validated": "10 · Validation",
+    "gpu_wait": "⏳ Waiting for GPU",
 }
 
 _BADGES = {
@@ -57,6 +58,8 @@ def _render_base(event: str, d: dict) -> str:
         if d.get("hyde_passage"):
             out += f"\n- **HyDE passage:** _{d['hyde_passage']}_"
         return out
+    if event == "gpu_wait":
+        return d.get("message") or "The GPU is busy with document ingestion."
     if event == "routing":
         return _bullets([("Routes", " + ".join(d.get("routes") or [])),
                          ("Decided by", d.get("decided_by")), ("Reason", d.get("reason")),
@@ -178,5 +181,7 @@ async def run(question: str, history: list[dict], options: dict, headers: dict,
     # Raw HTML is disabled in Chainlit (unsafe_allow_html = false), so the
     # status line is plain Markdown italics.
     content = "\n\n".join(p for p in (content, footer, f"*{_footer(final)}*") if p)
-    await cl.Message(content=content, elements=source_elements(citations)).send()
+    # The trace id lets 👍/👎 on this message become a score on its Langfuse trace.
+    await cl.Message(content=content, elements=source_elements(citations),
+                     metadata={"langfuse_trace_id": final.get("trace_id")}).send()
     return final

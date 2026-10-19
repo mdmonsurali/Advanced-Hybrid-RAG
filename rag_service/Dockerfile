@@ -14,8 +14,8 @@ RUN pip3 install --no-cache-dir -r /workspace/rag_service/requirements.txt
 
 # Pre-bake the embedding, reranker and BM25 models into the image so cold
 # start does not depend on a runtime HuggingFace download.
-ARG EMBED_MODEL=BAAI/bge-m3
-ARG RERANK_MODEL=BAAI/bge-reranker-v2-m3
+ARG EMBED_MODEL=Qwen/Qwen3-Embedding-0.6B
+ARG RERANK_MODEL=Qwen/Qwen3-Reranker-0.6B
 ENV HF_HOME=/opt/hf-cache
 ENV FASTEMBED_CACHE_PATH=/opt/fastembed-cache
 RUN python3 -c "\

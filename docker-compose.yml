@@ -22,6 +22,12 @@ services:
       - MCP_USER_ALLOWED_URLS=${MCP_USER_ALLOWED_URLS:-}
       - GDRIVE_ALLOWED_ROLES=${GDRIVE_ALLOWED_ROLES:-master,admin}
       - CHAT_HISTORY_ENABLED=${CHAT_HISTORY_ENABLED:-true}
+      # Langfuse (👍/👎 feedback → scores on the answer's trace)
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-http://langfuse_service:3000}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_TRACING_ENABLED=${LANGFUSE_TRACING_ENABLED:-true}
+      - LANGFUSE_TRACING_ENVIRONMENT=${LANGFUSE_TRACING_ENVIRONMENT:-local}
       # MinIO (chat history under chat/)
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
@@ -86,7 +92,13 @@ services:
       - DOCLING_DO_CODE_ENRICHMENT=${DOCLING_DO_CODE_ENRICHMENT:-false}
       - OCR_CONCURRENCY=${OCR_CONCURRENCY:-1}
       - INCLUDE_PICTURES=${INCLUDE_PICTURES:-true}
+      - DOCLING_NUM_THREADS=${DOCLING_NUM_THREADS:-4}
+      - DOCLING_GPU_OCR_BACKEND=${DOCLING_GPU_OCR_BACKEND:-torch}
       - RAG_SERVICE_URL=http://rag_service:8003
+      # GPU swap: PDFs/images convert on CUDA under an orchestrator `ocr` lease
+      - GPU_SWAP=${GPU_SWAP:-false}
+      - ORCHESTRATOR_SERVICE_URL=http://orchestrator_service:8004
+      - GPU_LEASE_TTL_SEC=${GPU_LEASE_TTL_SEC:-120}
       # MinIO (document bytes + metadata)
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
@@ -99,6 +111,11 @@ services:
       resources:
         limits:
           memory: ${OCR_MEMORY_LIMIT:-8G}
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
@@ -118,15 +135,15 @@ services:
       context: .
       dockerfile: rag_service/Dockerfile
       args:
-        EMBED_MODEL: ${EMBED_MODEL:-BAAI/bge-m3}
-        RERANK_MODEL: ${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+        EMBED_MODEL: ${EMBED_MODEL:-Qwen/Qwen3-Embedding-0.6B}
+        RERANK_MODEL: ${RERANK_MODEL:-Qwen/Qwen3-Reranker-0.6B}
     image: ahr-rag:latest
     container_name: rag_service
     environment:
       - RAG_SERVICE_PORT=8003
       - LLM_SERVICE_URL=http://llm_service:8005
       - QDRANT_URL=http://qdrant:6333
-      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-chunks}
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-chunks_qwen3}
       - EMBED_DEVICE=${EMBED_DEVICE:-cpu}
       - RERANK_DEVICE=${RERANK_DEVICE:-cpu}
       - BM25_LANGUAGE=${BM25_LANGUAGE:-english}
@@ -135,6 +152,16 @@ services:
       - RAG_RERANK_TOP_K=${RAG_RERANK_TOP_K:-8}
       - RAG_RERANK_MIN_SCORE=${RAG_RERANK_MIN_SCORE:-0.15}
       - RAG_SYNC_ON_STARTUP=${RAG_SYNC_ON_STARTUP:-true}
+      - RAG_FIGURE_DESCRIPTIONS=${RAG_FIGURE_DESCRIPTIONS:-true}
+      - RAG_FIGURE_MIN_PX=${RAG_FIGURE_MIN_PX:-150}
+      - RAG_FIGURE_MAX_PX=${RAG_FIGURE_MAX_PX:-1024}
+      - RAG_FIGURE_MAX_PER_DOC=${RAG_FIGURE_MAX_PER_DOC:-40}
+      # Langfuse tracing (spans join the orchestrator's trace)
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-http://langfuse_service:3000}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_TRACING_ENABLED=${LANGFUSE_TRACING_ENABLED:-true}
+      - LANGFUSE_TRACING_ENVIRONMENT=${LANGFUSE_TRACING_ENVIRONMENT:-local}
       # MCP servers (mounted in this service at /mcp/gdrive and /mcp/websearch)
       - MCP_TOKEN=${MCP_TOKEN:?MCP_TOKEN must be set}
       - MCP_TIMEOUT_SEC=${MCP_TIMEOUT_SEC:-20}
@@ -157,7 +184,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${RAG_MEMORY_LIMIT:-6G}
+          memory: ${RAG_MEMORY_LIMIT:-8G}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
@@ -192,6 +219,16 @@ services:
       - RAG_ANSWER_TOKENS=${RAG_ANSWER_TOKENS:-1024}
       - RAG_MIN_GROUNDED=${RAG_MIN_GROUNDED:-0.7}
       - RAG_MASK_PII=${RAG_MASK_PII:-true}
+      # Langfuse tracing (every SGLang call becomes a generation) + prompt management
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-http://langfuse_service:3000}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_TRACING_ENABLED=${LANGFUSE_TRACING_ENABLED:-true}
+      - LANGFUSE_TRACING_ENVIRONMENT=${LANGFUSE_TRACING_ENVIRONMENT:-local}
+      - PROMPT_SOURCE=${PROMPT_SOURCE:-langfuse}
+      - PROMPT_LABEL=${PROMPT_LABEL:-production}
+      - PROMPT_VERSIONS=${PROMPT_VERSIONS:-}
+      - PROMPT_CACHE_TTL=${PROMPT_CACHE_TTL:-60}
     deploy:
       resources:
         reservations:
@@ -225,6 +262,22 @@ services:
       - LLM_SERVICE_URL=http://llm_service:8005
       - RAG_MAX_RETRIES=${RAG_MAX_RETRIES:-1}
       - RAG_RETRY_ADD_WEB=${RAG_RETRY_ADD_WEB:-true}
+      # GPU swap (gpu_swap.py): OCR and the LLM take turns on the GPU
+      - GPU_SWAP=${GPU_SWAP:-false}
+      - LLM_CONTAINER_NAME=llm_service
+      - OCR_SERVICE_URL=http://ocr_service:8001
+      - GPU_SWAP_IDLE_SEC=${GPU_SWAP_IDLE_SEC:-30}
+      - SWAP_HEALTH_TIMEOUT_SEC=${SWAP_HEALTH_TIMEOUT_SEC:-900}
+      - GPU_LEASE_TTL_SEC=${GPU_LEASE_TTL_SEC:-120}
+      # Langfuse tracing (root trace per question + validation scores)
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-http://langfuse_service:3000}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_TRACING_ENABLED=${LANGFUSE_TRACING_ENABLED:-true}
+      - LANGFUSE_TRACING_ENVIRONMENT=${LANGFUSE_TRACING_ENVIRONMENT:-local}
+    volumes:
+      # Docker socket: gpu_swap stops/starts llm_service (only that name, from env).
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
@@ -236,7 +289,7 @@ services:
       rag_service:
         condition: service_healthy
       llm_service:
-        condition: service_healthy
+        condition: service_started   # may be swapped out for OCR
     networks:
       - rag-network
 
@@ -280,13 +333,177 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme}
       MINIO_BUCKET: ${MINIO_BUCKET:-ocr}
+      LANGFUSE_BUCKET: ${LANGFUSE_S3_BUCKET:-langfuse}
     entrypoint: >
       sh -c "
         mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" &&
         mc mb --ignore-existing local/\"$$MINIO_BUCKET\" &&
-        echo 'minio bucket ready: '\"$$MINIO_BUCKET\"
+        mc mb --ignore-existing local/\"$$LANGFUSE_BUCKET\" &&
+        echo 'minio buckets ready: '\"$$MINIO_BUCKET\"', '\"$$LANGFUSE_BUCKET\"
       "
     restart: "no"
+    networks:
+      - rag-network
+
+  # ── Observability: langfuse_service (traces, scores, prompts) ────────────
+  # Self-hosted Langfuse v4. See langfuse_service/README.md. Shares the MinIO
+  # above (bucket `langfuse`); Postgres, ClickHouse and Redis are its own and
+  # are only reachable on rag-network. Only the web UI is published.
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    container_name: langfuse-worker
+    depends_on: &langfuse-depends-on
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment: &langfuse-env
+      NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_POSTGRES_PASSWORD:?LANGFUSE_POSTGRES_PASSWORD must be set}@langfuse-postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT:?LANGFUSE_SALT must be set}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:?LANGFUSE_ENCRYPTION_KEY must be set (openssl rand -hex 32)}
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?LANGFUSE_CLICKHOUSE_PASSWORD must be set}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_BUCKET:-langfuse}
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${MINIO_REGION:-us-east-1}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-admin}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-changeme}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${LANGFUSE_S3_BUCKET:-langfuse}
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${MINIO_REGION:-us-east-1}
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-admin}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-changeme}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: ${LANGFUSE_REDIS_PASSWORD:?LANGFUSE_REDIS_PASSWORD must be set}
+    deploy:
+      resources:
+        limits:
+          memory: ${LANGFUSE_WORKER_MEMORY_LIMIT:-1G}
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  langfuse_service:
+    image: docker.langfuse.com/langfuse/langfuse:4
+    container_name: langfuse_service
+    depends_on: *langfuse-depends-on
+    ports:
+      - "${LANGFUSE_PORT:-3000}:3000"
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?LANGFUSE_NEXTAUTH_SECRET must be set}
+      # Headless init: org, project, the API key pair our services use, and
+      # the first login. Only applied when they don't exist yet.
+      LANGFUSE_INIT_ORG_ID: advanced-hybrid-rag
+      LANGFUSE_INIT_ORG_NAME: Advanced Hybrid RAG
+      LANGFUSE_INIT_PROJECT_ID: advanced-hybrid-rag
+      LANGFUSE_INIT_PROJECT_NAME: advanced-hybrid-rag
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?LANGFUSE_PUBLIC_KEY must be set}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?LANGFUSE_SECRET_KEY must be set}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:?LANGFUSE_INIT_USER_EMAIL must be set}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-admin}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:?LANGFUSE_INIT_USER_PASSWORD must be set}
+      AUTH_DISABLE_SIGNUP: "true"
+    deploy:
+      resources:
+        limits:
+          memory: ${LANGFUSE_WEB_MEMORY_LIMIT:-2G}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://$$HOSTNAME:3000/api/public/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  langfuse-postgres:
+    image: postgres:17
+    container_name: langfuse-postgres
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_POSTGRES_PASSWORD:?LANGFUSE_POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: langfuse
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:25.12
+    container_name: langfuse-clickhouse
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:?LANGFUSE_CLICKHOUSE_PASSWORD must be set}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+      - ./langfuse_service/clickhouse/low-memory.xml:/etc/clickhouse-server/config.d/low-memory.xml:ro
+    deploy:
+      resources:
+        limits:
+          memory: ${LANGFUSE_CLICKHOUSE_MEMORY_LIMIT:-2G}
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  langfuse-redis:
+    image: redis:7
+    container_name: langfuse-redis
+    command: >
+      --requirepass ${LANGFUSE_REDIS_PASSWORD:?LANGFUSE_REDIS_PASSWORD must be set}
+      --maxmemory-policy noeviction
+    volumes:
+      - langfuse_redis_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${LANGFUSE_REDIS_PASSWORD:?LANGFUSE_REDIS_PASSWORD must be set}
+    restart: unless-stopped
     networks:
       - rag-network
 
@@ -294,6 +511,10 @@ volumes:
   auth_data:
   minio_data:
   qdrant_data:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_redis_data:
 
 networks:
   rag-network:

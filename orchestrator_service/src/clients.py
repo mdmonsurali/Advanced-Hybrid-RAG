@@ -6,6 +6,7 @@ import os
 
 import httpx
 
+import tracing
 from identity import Identity, identity_headers
 
 RAG_SERVICE_URL = os.getenv("RAG_SERVICE_URL", "http://rag_service:8003")
@@ -23,6 +24,8 @@ class ServiceError(RuntimeError):
 
 async def _post(service: str, url: str, payload: dict, timeout: float,
                 headers: dict | None = None) -> dict:
+    # The callee's spans join this question's Langfuse trace.
+    headers = {**(headers or {}), **tracing.outgoing_headers()}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(url, json=payload, headers=headers)

@@ -150,6 +150,18 @@ class DocMetadataRequest(BaseModel):
     text: str
 
 
+class DescribeFigureRequest(BaseModel):
+    image_b64: str
+    mime: Literal["image/jpeg", "image/png"] = "image/jpeg"
+    caption: str = ""
+    context: str = ""
+
+
+class DescribeFigureOutput(BaseModel):
+    """STEP 1 — what a figure shows, indexed with its caption."""
+    description: str
+
+
 class CompressRequest(BaseModel):
     plan: QueryPlan
     evidence: list[Evidence]

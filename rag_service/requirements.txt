@@ -9,7 +9,7 @@ pydantic==2.14.0
 # Chunking (DoclingDocument + HybridChunker)
 docling-core[chunking]==2.101.1
 
-# Embeddings: dense (bge-m3), cross-encoder reranker, sparse BM25
+# Embeddings: dense (Qwen3-Embedding), reranker (Qwen3-Reranker), sparse BM25
 sentence-transformers==6.1.0
 transformers==5.19.0
 fastembed==0.9.0
@@ -27,3 +27,6 @@ pypdf==6.19.0
 
 # Storage
 minio==7.2.20
+
+# Tracing (langfuse_service)
+langfuse==5.0.2

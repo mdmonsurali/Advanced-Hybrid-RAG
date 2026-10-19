@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from prompts import registry
 from prompts.answer import format_evidence
 from schemas import Evidence
 
-JUDGE_SYSTEM = """\
+JUDGE_SYSTEM = registry.register("rag/judge", """\
 You are a strict fact-checker for answers produced from evidence.
 
 1. Split the answer into its individual factual claims (ignore greetings, \
@@ -19,14 +20,11 @@ self-harm, malware or other clearly harmful acts.
 sexual content involving minors.
 
 Return JSON with claims (claim, supported, evidence), unsafe and \
-policy_violation."""
+policy_violation.""")
 
 
 def judge_messages(question: str, answer: str, evidence: list[Evidence]) -> list[dict]:
     user = (f"Evidence:\n{format_evidence(evidence)}\n\n"
             f"Question: {question}\n\n"
             f"Answer to check:\n{answer}")
-    return [
-        {"role": "system", "content": JUDGE_SYSTEM},
-        {"role": "user", "content": user},
-    ]
+    return registry.messages("rag/judge", [{"role": "user", "content": user}])

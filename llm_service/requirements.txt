@@ -1,4 +1,8 @@
 # Task-API dependencies on top of the lmsysorg/sglang base image.
 # fastapi, uvicorn, pydantic, openai (2.6.1), httpx and transformers (5.3.0)
 # already ship with SGLang; pinning them here again would risk breaking the
-# server's own pins, so this file intentionally adds nothing else.
+# server's own pins, so they are not listed.
+
+# Tracing + prompt management (langfuse_service). Pulls opentelemetry-*
+# >=1.45; the Dockerfile checks that SGLang still imports afterwards.
+langfuse==5.0.2

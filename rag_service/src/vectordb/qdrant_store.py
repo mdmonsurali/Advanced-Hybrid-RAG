@@ -1,7 +1,8 @@
 """Qdrant collection: one point per chunk with two named vectors —
-`dense` (bge-m3, cosine) and `bm25` (sparse, IDF applied by Qdrant) — and
-the chunk metadata as payload. Payload indexes back the ACL / doc_type /
-time filters used at query time."""
+`dense` (the EMBED_MODEL embedder, cosine) and `bm25` (sparse, IDF applied by
+Qdrant) — and the chunk metadata as payload. Payload indexes back the ACL /
+doc_type / time filters used at query time. The collection records which
+embedder filled it, so switching models never mixes vectors from two models."""
 
 from __future__ import annotations
 
@@ -32,7 +33,7 @@ def init_client(location: str | None = None) -> None:
               else AsyncQdrantClient(url=QDRANT_URL))
 
 
-async def ensure_collection(dense_dim: int) -> None:
+async def ensure_collection(dense_dim: int, embed_model: str) -> None:
     assert client is not None
     if await client.collection_exists(QDRANT_COLLECTION):
         info = await client.get_collection(QDRANT_COLLECTION)
@@ -41,18 +42,25 @@ async def ensure_collection(dense_dim: int) -> None:
             raise RuntimeError(
                 f"collection {QDRANT_COLLECTION} has dense size {size}, model gives "
                 f"{dense_dim}; change QDRANT_COLLECTION or drop the collection")
+        filled_by = (info.config.metadata or {}).get("embed_model")
+        if filled_by and filled_by != embed_model:
+            raise RuntimeError(
+                f"collection {QDRANT_COLLECTION} holds {filled_by} vectors, EMBED_MODEL is "
+                f"{embed_model}; change QDRANT_COLLECTION or drop the collection")
         return
     await client.create_collection(
         QDRANT_COLLECTION,
         vectors_config={DENSE: models.VectorParams(size=dense_dim, distance=models.Distance.COSINE)},
         sparse_vectors_config={SPARSE: models.SparseVectorParams(modifier=models.Modifier.IDF)},
+        metadata={"embed_model": embed_model},
     )
     for field in _KEYWORD_FIELDS:
         await client.create_payload_index(QDRANT_COLLECTION, field,
                                           models.PayloadSchemaType.KEYWORD)
     await client.create_payload_index(QDRANT_COLLECTION, "timestamp",
                                       models.PayloadSchemaType.DATETIME)
-    log.info("created qdrant collection %s (dense=%d + bm25)", QDRANT_COLLECTION, dense_dim)
+    log.info("created qdrant collection %s (%s dense=%d + bm25)", QDRANT_COLLECTION,
+             embed_model, dense_dim)
 
 
 async def health() -> None:

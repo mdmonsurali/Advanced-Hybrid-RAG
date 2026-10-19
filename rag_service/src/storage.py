@@ -9,7 +9,9 @@ Public surface:
     init_minio() / load_registry()
     health_minio()
     load_meta(doc_id) / load_layout(doc_id) / list_ocr_documents()
+    load_picture(doc_id, rel_path)
     REGISTRY (doc_id -> entry), put_index(entry), delete_index(doc_id)
+    load_figure_cache(doc_id) / put_figure_cache(doc_id, cache)  rag/{uuid}/figures.json
 """
 
 from __future__ import annotations
@@ -109,6 +111,26 @@ async def load_meta(doc_id: str) -> Optional[dict]:
 
 async def load_layout(doc_id: str) -> Optional[dict]:
     return await _read_json(f"documents/{doc_id}/layout.json")
+
+
+async def load_picture(doc_id: str, rel_path: str) -> Optional[bytes]:
+    """A picture crop ocr_service stored (rel_path: images/picture-N.png)."""
+    if not rel_path.startswith("images/") or ".." in rel_path:
+        return None
+    try:
+        return await asyncio.to_thread(_get_object_bytes, f"documents/{doc_id}/{rel_path}")
+    except S3Error as e:
+        if e.code in {"NoSuchKey", "NoSuchObject"}:
+            return None
+        raise
+
+
+async def load_figure_cache(doc_id: str) -> dict:
+    return await _read_json(f"rag/{doc_id}/figures.json") or {}
+
+
+async def put_figure_cache(doc_id: str, cache: dict) -> None:
+    await asyncio.to_thread(_put_json, f"rag/{doc_id}/figures.json", cache)
 
 
 async def list_ocr_documents() -> list[dict]:

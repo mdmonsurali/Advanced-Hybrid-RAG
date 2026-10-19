@@ -5,6 +5,10 @@ pipeline (layout model + TableFormer + OCR for bitmap regions; the PDF text
 layer is used wherever it exists). Images go through the same pipeline; DOCX
 is parsed natively by Docling's Word backend.
 
+With GPU_SWAP=true, PDFs and images are converted on CUDA by the GPU worker
+process (gpu_worker.py) under an `ocr` lease from the orchestrator's GPU swap;
+the in-process converter below stays on CPU for DOCX and as the fallback.
+
 Outputs per document:
     markdown  `export_to_markdown`, pictures referenced as images/picture-N.png
     json      `export_to_dict` (DoclingDocument schema)
@@ -47,6 +51,12 @@ def _env_bool(name: str, default: str) -> bool:
 
 INCLUDE_PICTURES = _env_bool("INCLUDE_PICTURES", "true")
 DOCLING_DEVICE = os.getenv("DOCLING_DEVICE", "cpu")
+DOCLING_NUM_THREADS = int(os.getenv("DOCLING_NUM_THREADS", "4"))
+GPU_SWAP = _env_bool("GPU_SWAP", "false")
+# RapidOCR backend inside the GPU worker; `torch` runs on CUDA (models are
+# baked into the image next to the onnx ones).
+DOCLING_GPU_OCR_BACKEND = os.getenv("DOCLING_GPU_OCR_BACKEND", "torch").strip().lower()
+GPU_EXTS = {".pdf", ".png", ".jpg", ".jpeg"}
 # auto | rapidocr | easyocr (easyocr needs the docling[easyocr] extra).
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE", "rapidocr").strip().lower()
 # Comma-separated OCR languages; empty keeps the engine default (RapidOCR: ch,
@@ -70,15 +80,17 @@ _converter: DocumentConverter | None = None
 _sem: asyncio.Semaphore | None = None
 
 
-def _pipeline_options() -> PdfPipelineOptions:
+def _pipeline_options(device: str = DOCLING_DEVICE) -> PdfPipelineOptions:
     ocr_cls = _OCR_OPTION_CLASSES.get(DOCLING_OCR_ENGINE)
     if ocr_cls is None:
         raise ValueError(f"Unsupported DOCLING_OCR_ENGINE: {DOCLING_OCR_ENGINE}")
     ocr_kwargs = {"lang": DOCLING_OCR_LANG} if DOCLING_OCR_LANG else {}
+    if device.startswith("cuda") and ocr_cls is RapidOcrOptions:
+        ocr_kwargs["backend"] = DOCLING_GPU_OCR_BACKEND
 
     return PdfPipelineOptions(
         artifacts_path=DOCLING_ARTIFACTS_PATH,
-        accelerator_options=AcceleratorOptions(device=DOCLING_DEVICE),
+        accelerator_options=AcceleratorOptions(device=device, num_threads=DOCLING_NUM_THREADS),
         do_ocr=True,
         ocr_options=ocr_cls(**ocr_kwargs),
         do_table_structure=True,
@@ -93,12 +105,10 @@ def _pipeline_options() -> PdfPipelineOptions:
     )
 
 
-def init_converter() -> None:
-    """Build the converter and load the PDF pipeline models (blocking; call
-    once at startup so the first request doesn't pay the model load)."""
-    global _converter, _sem
-    opts = _pipeline_options()
-    _converter = DocumentConverter(
+def build_converter(device: str = DOCLING_DEVICE) -> DocumentConverter:
+    """A converter with the PDF pipeline models loaded (blocking)."""
+    opts = _pipeline_options(device)
+    converter = DocumentConverter(
         allowed_formats=[InputFormat.PDF, InputFormat.IMAGE, InputFormat.DOCX],
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=opts),
@@ -106,7 +116,15 @@ def init_converter() -> None:
             InputFormat.DOCX: WordFormatOption(),
         },
     )
-    _converter.initialize_pipeline(InputFormat.PDF)
+    converter.initialize_pipeline(InputFormat.PDF)
+    return converter
+
+
+def init_converter() -> None:
+    """Build the converter and load the PDF pipeline models (blocking; call
+    once at startup so the first request doesn't pay the model load)."""
+    global _converter, _sem
+    _converter = build_converter()
     _sem = asyncio.Semaphore(max(1, OCR_CONCURRENCY))
     log.info("[docling] converter ready (device=%s, ocr=%s, table=%s)",
              DOCLING_DEVICE, DOCLING_OCR_ENGINE, DOCLING_TABLE_MODE)
@@ -116,19 +134,32 @@ def is_ready() -> bool:
     return _converter is not None
 
 
-def _convert_sync(path: Path) -> DoclingDocument:
-    assert _converter is not None, "init_converter() not called"
-    result = _converter.convert(str(path), raises_on_error=True)
+def convert_with(converter: DocumentConverter, path: Path) -> DoclingDocument:
+    result = converter.convert(str(path), raises_on_error=True)
     if result.status == ConversionStatus.PARTIAL_SUCCESS:
         log.warning("[docling] %s converted partially: %s",
                     path.name, [e.error_message for e in result.errors])
     return result.document
 
 
+def _convert_sync(path: Path) -> DoclingDocument:
+    assert _converter is not None, "init_converter() not called"
+    return convert_with(_converter, path)
+
+
 async def convert(path: Path) -> DoclingDocument:
-    """Convert one file off the event loop, bounded by OCR_CONCURRENCY."""
+    """Convert one file off the event loop, bounded by OCR_CONCURRENCY.
+    PDFs/images go to the GPU worker when GPU_SWAP is on; if the GPU path is
+    unavailable (orchestrator down, worker crashed) the CPU converter runs."""
     assert _sem is not None, "init_converter() not called"
     async with _sem:
+        if GPU_SWAP and path.suffix.lower() in GPU_EXTS:
+            import gpu_worker
+            try:
+                async with gpu_worker.ocr_lease():
+                    return await gpu_worker.convert(path)
+            except gpu_worker.GpuUnavailable as e:
+                log.warning("[docling] GPU path unavailable for %s, using CPU: %s", path.name, e)
         return await asyncio.to_thread(_convert_sync, path)
 
 

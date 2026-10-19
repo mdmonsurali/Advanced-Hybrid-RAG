@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Advanced Hybrid RAG · Ingest Documents</title>
-  <link rel="stylesheet" href="/static/style.css?v=11" />
+  <link rel="stylesheet" href="/static/style.css?v=12" />
 </head>
 <body>
 
@@ -21,7 +21,7 @@
 
 <h1 class="page-title">Ingest Documents for RAG</h1>
 
-<main class="admin-shell">
+<main class="admin-shell ing-shell">
   <section class="admin-section">
     <div id="drop" class="ing-drop">
       <p>Drop PDF, DOCX, PNG or JPG files (or a whole folder) here. Each file is OCR'd, chunked, embedded and stored in the vector database.</p>
@@ -34,13 +34,31 @@
 
     <div class="ing-bar">
       <span id="summary">No files yet</span>
+      <button type="button" id="btn-cancel" class="ing-btn ing-btn-danger" hidden>Cancel</button>
+      <button type="button" id="btn-resume" class="ing-btn" hidden>Resume cancelled</button>
       <button type="button" id="btn-retry" class="ing-btn" hidden>Retry failed</button>
       <button type="button" id="btn-clear" class="ing-btn" hidden>Clear finished</button>
     </div>
     <div class="ing-track"><div id="fill" class="ing-fill"></div></div>
-    <div id="list" class="ing-list"></div>
+    <div id="list" class="ing-list"><div id="empty" class="ing-empty">No files yet</div></div>
   </section>
 </main>
+
+<footer class="footer">
+  <span>Made with <span class="heart">&#10084;</span> using <strong>Advanced Hybrid RAG</strong></span>
+  <span class="sep">|</span>
+  <span>&copy; 2026 <strong>Md Monsur Ali</strong></span>
+  <span class="sep">|</span>
+  <a href="https://www.linkedin.com/in/mdmonsurali/" target="_blank" rel="noopener">LinkedIn</a>
+  <span class="sep">·</span>
+  <a href="https://inventaai.com/" target="_blank" rel="noopener">Blog</a>
+  <span class="sep">·</span>
+  <a href="https://www.linkedin.com/company/inventaai/" target="_blank" rel="noopener">InventaAI</a>
+  <span class="sep">·</span>
+  <a href="https://medium.com/@monsuralirana/" target="_blank" rel="noopener">Medium</a>
+  <span class="sep">·</span>
+  <a href="https://github.com/mdmonsurali" target="_blank" rel="noopener">GitHub</a>
+</footer>
 
 <script>
 (() => {
@@ -51,16 +69,35 @@
   const STORE = "ingest-queue-v1";
 
   // item: {key, name, size, file?, docId?, status, msg}
-  // status: queued | ocr | indexing | done | error
+  // status: queued | ocr | indexing | done | error | cancelled
   const items = [];
   const rows = new Map();
   const seen = new Set();
   const $ = (id) => document.getElementById(id);
   let uploading = 0;
+  // Set by Cancel: no new OCR uploads start. Files already in OCR finish and
+  // are indexed server-side (ocr_service triggers rag ingest on OCR success).
+  let stopped = false;
+  let pollCursor = 0;
+  const count = { queued: 0, ocr: 0, indexing: 0, done: 0, error: 0, cancelled: 0 };
 
-  const LABEL = { queued: "Queued", ocr: "OCR…", indexing: "Embedding / indexing…", done: "Indexed", error: "Failed" };
+  const LABEL = { queued: "Queued", ocr: "OCR…", indexing: "Embedding / indexing…", done: "Indexed", error: "Failed", cancelled: "Cancelled" };
 
+  function track(it, status) {
+    if (it.status in count) count[it.status]--;
+    it.status = status;
+    count[status]++;
+  }
+
+  // Debounced: serialising the whole queue on every status change is wasteful
+  // for large batches.
+  let saveTimer = 0;
   function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 500);
+  }
+
+  function saveNow() {
     try {
       const keep = items.filter((i) => i.docId && i.status !== "error")
         .map(({ key, name, size, docId, status, msg }) => ({ key, name, size, docId, status, msg }));
@@ -75,6 +112,7 @@
       if (seen.has(s.key)) continue;
       seen.add(s.key);
       items.push(s);
+      count[s.status]++;
       addRow(s);
     }
     refresh();
@@ -94,24 +132,30 @@
   function paint(it) {
     const r = rows.get(it.key);
     if (!r) return;
-    r.row.className = "ing-row " + (it.status === "done" ? "done" : it.status === "error" ? "error" : "");
+    r.row.className = "ing-row " + (["done", "error", "cancelled"].includes(it.status) ? it.status : "");
     r.st.textContent = it.status === "error" ? "Failed: " + (it.msg || "error") :
-      it.status === "done" && it.msg ? "Indexed · " + it.msg : LABEL[it.status];
+      it.status === "done" && it.msg ? "Indexed · " + it.msg :
+      it.status === "ocr" && stopped ? "OCR… (finishing, then indexing)" : LABEL[it.status];
     r.row.title = it.msg || "";
   }
 
   function refresh() {
     const n = items.length;
-    const c = (s) => items.filter((i) => i.status === s).length;
-    const done = c("done"), err = c("error");
-    $("summary").textContent = n ? `${done} / ${n} indexed · ${err} failed · ${n - done - err} in progress` : "No files yet";
-    $("fill").style.width = n ? Math.round(((done + err) / n) * 100) + "%" : "0";
-    $("btn-retry").hidden = !items.some((i) => i.status === "error" && i.file);
-    $("btn-clear").hidden = !(done || err);
+    const { done, error: err, cancelled: cxl } = count;
+    const active = count.queued + count.ocr + count.indexing;
+    $("summary").textContent = n
+      ? `${done} / ${n} indexed · ${err} failed` + (cxl ? ` · ${cxl} cancelled` : "") + ` · ${active} in progress`
+      : "No files yet";
+    $("fill").style.width = n ? Math.round(((done + err + cxl) / n) * 100) + "%" : "0";
+    $("empty").hidden = n > 0;
+    $("btn-cancel").hidden = !(count.queued + count.ocr) || stopped;
+    $("btn-resume").hidden = !cxl;
+    $("btn-retry").hidden = !(err && items.some((i) => i.status === "error" && i.file));
+    $("btn-clear").hidden = !(done || err || cxl);
     save();
   }
 
-  function set(it, status, msg) { it.status = status; it.msg = msg; paint(it); refresh(); }
+  function set(it, status, msg) { track(it, status); it.msg = msg; paint(it); refresh(); }
 
   function addFiles(files) {
     for (const f of files) {
@@ -122,8 +166,10 @@
       seen.add(key);
       const it = { key, name: f.webkitRelativePath || f.name, size: f.size, file: f, status: "queued" };
       items.push(it);
+      count.queued++;
       addRow(it);
     }
+    stopped = false;
     refresh();
     pump();
   }
@@ -154,7 +200,7 @@
   }
 
   function pump() {
-    while (uploading < UPLOAD_CONCURRENCY) {
+    while (!stopped && uploading < UPLOAD_CONCURRENCY) {
       const it = items.find((i) => i.status === "queued" && i.file);
       if (!it) return;
       uploading++;
@@ -174,7 +220,11 @@
   }
 
   async function pollLoop() {
-    const pending = items.filter((i) => i.status === "indexing" && i.docId).slice(0, POLL_BATCH);
+    // Rotate through the pending list so large batches all get polled.
+    const all = items.filter((i) => i.status === "indexing" && i.docId);
+    if (pollCursor >= all.length) pollCursor = 0;
+    const pending = all.slice(pollCursor, pollCursor + POLL_BATCH);
+    pollCursor += POLL_BATCH;
     await Promise.all(pending.map(pollOne));
     setTimeout(pollLoop, POLL_MS);
   }
@@ -206,14 +256,27 @@
     addFiles(files);
   };
 
-  $("btn-retry").onclick = () => {
-    for (const it of items) if (it.status === "error" && it.file) { it.status = "queued"; paint(it); }
+  function requeue(status) {
+    stopped = false;
+    for (const it of items) if (it.status === status && it.file) { track(it, "queued"); paint(it); }
+    for (const it of items) if (it.status === "ocr") paint(it);
     refresh(); pump();
+  }
+  $("btn-cancel").onclick = () => {
+    stopped = true;
+    for (const it of items) {
+      if (it.status === "queued") { track(it, "cancelled"); it.msg = ""; }
+      if (it.status === "cancelled" || it.status === "ocr") paint(it);
+    }
+    refresh();
   };
+  $("btn-resume").onclick = () => requeue("cancelled");
+  $("btn-retry").onclick = () => requeue("error");
   $("btn-clear").onclick = () => {
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
-      if (it.status === "done" || it.status === "error") {
+      if (it.status === "done" || it.status === "error" || it.status === "cancelled") {
+        count[it.status]--;
         rows.get(it.key)?.row.remove(); rows.delete(it.key); seen.delete(it.key); items.splice(i, 1);
       }
     }

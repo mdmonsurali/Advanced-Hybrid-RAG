@@ -34,11 +34,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        # Drop any X-User-* headers from the inbound request; only the
-        # middleware/proxy layer is allowed to set them.
+        # Drop any X-User-* / X-Langfuse-* headers from the inbound request;
+        # only the middleware/proxy layer and the backends set them.
         scope_headers = [
             (k, v) for (k, v) in request.scope["headers"]
-            if not k.lower().startswith(b"x-user-")
+            if not k.lower().startswith((b"x-user-", b"x-langfuse-"))
         ]
         request.scope["headers"] = scope_headers
 

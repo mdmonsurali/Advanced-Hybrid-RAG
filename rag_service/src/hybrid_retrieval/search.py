@@ -4,7 +4,8 @@ Vector search finds semantic matches, BM25 catches exact terms (codes,
 names, numbers); Qdrant runs both as prefetches and fuses them with RRF.
 
 Per search query (each sub-question, or the rewritten question):
-  dense  : embedding of the query, plus the HyDE passage for the main query
+  dense  : embedding of the query (with the embedder's query instruction),
+           plus the HyDE passage (embedded as a document) for the main query
   sparse : BM25 of the query (+ expansions for the main query)
   filter : ACL (owner OR shared) + doc_type / date filters from STEP 3,
            filters dropped and K doubled on a `broaden` retry
@@ -82,11 +83,11 @@ async def search_docs(plan: QueryPlan, identity: Identity,
     queries = search_queries(plan)
 
     async def _one(query: str, is_main: bool) -> list[tuple[Evidence, str]]:
-        dense_inputs = [query]
-        if is_main and plan.hyde_passage:
-            dense_inputs.append(plan.hyde_passage)
         sparse_input = " ".join([query, *plan.expansions]) if is_main else query
-        dense_vecs = await asyncio.to_thread(dense.embed, dense_inputs)
+        dense_vecs = await asyncio.to_thread(dense.embed_query, [query])
+        if is_main and plan.hyde_passage:
+            # A HyDE passage is a hypothetical answer: embed it like a document.
+            dense_vecs += await asyncio.to_thread(dense.embed, [plan.hyde_passage])
         sparse_vec = await asyncio.to_thread(sparse.embed_query, sparse_input)
         points = await qdrant_store.hybrid_query(dense_vecs, sparse_vec, flt, limit)
         rerank_query = plan.standalone_question if is_main else query

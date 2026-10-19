@@ -11,6 +11,7 @@ Exposes:
     GET    /documents/{id}/{kind}               stream source|md|json|docx from MinIO
     GET    /preview/{id}                        DOCX -> PDF via LibreOffice
     POST   /preview-input (file)                DOCX upload -> PDF preview
+    POST   /gpu/enable | /gpu/disable           Docling GPU worker on/off (orchestrator GPU swap)
 
 Bytes live in MinIO at documents/{uuid}/{source.ext,output.md,layout.json,output.docx}
 plus picture crops under documents/{uuid}/images/. layout.json is a DoclingDocument.
@@ -45,6 +46,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from PIL import Image
 
 import docling_engine
+import gpu_worker
 import storage
 
 log = logging.getLogger("ocr_service")
@@ -128,6 +130,7 @@ async def lifespan(app: FastAPI):
     await storage.load_index()
     log.info("storage layer ready (minio)")
     yield
+    await gpu_worker.disable()
 
 
 app = FastAPI(title="Docling OCR Service", version="3.0", lifespan=lifespan)
@@ -147,6 +150,30 @@ class _SilencePathsFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(
     _SilencePathsFilter(("/health",))
 )
+
+
+# GPU worker — called only by orchestrator_service's gpu_swap over the docker
+# network (no identity: drop the host port mapping for 8001 in production).
+
+@app.post("/gpu/enable")
+async def gpu_enable():
+    if not docling_engine.GPU_SWAP:
+        raise HTTPException(409, "GPU_SWAP is off for ocr_service")
+    try:
+        return await gpu_worker.enable()
+    except Exception as e:
+        log.exception("[gpu] enable failed")
+        raise HTTPException(500, f"GPU worker failed to start: {e}")
+
+
+@app.post("/gpu/disable")
+async def gpu_disable():
+    return await gpu_worker.disable()
+
+
+@app.get("/gpu/status")
+async def gpu_status():
+    return {"gpu_swap": docling_engine.GPU_SWAP, "enabled": gpu_worker.enabled()}
 
 
 # Pipeline helpers

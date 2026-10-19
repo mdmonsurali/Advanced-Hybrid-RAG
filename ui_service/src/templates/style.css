@@ -1120,17 +1120,37 @@ body {
 .share-toggle { cursor: pointer; }
 
 /* ── Ingest page ──────────────────────────────────────────────────────────── */
-.ing-drop { border: 2px dashed var(--accent); border-radius: 14px; padding: 28px; text-align: center; color: var(--muted); }
+/* Page = topbar / title / shell / footer; only the file list scrolls, so the
+   layout is identical for 1 file or thousands. */
+.ing-shell { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; padding-bottom: 16px; }
+.ing-shell .admin-section { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+.ing-drop { border: 2px dashed var(--accent); border-radius: 14px; padding: 18px; text-align: center; color: var(--muted); flex-shrink: 0; }
 .ing-drop.over { background: rgba(99, 102, 241, 0.12); }
 .ing-drop button, .ing-bar button { margin: 6px 4px 0; }
-.ing-bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 16px 0 8px; }
-.ing-track { background: var(--border); border-radius: 999px; height: 8px; overflow: hidden; margin-bottom: 12px; }
+.ing-bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 14px 0 8px; flex-shrink: 0; }
+.ing-track { background: var(--border); border-radius: 999px; height: 8px; overflow: hidden; margin-bottom: 12px; flex-shrink: 0; }
 .ing-fill { background: linear-gradient(90deg, var(--accent), var(--accent2)); height: 100%; width: 0; transition: width 0.3s; }
-.ing-list { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-.ing-row { display: flex; gap: 12px; justify-content: space-between; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; }
+.ing-list {
+  flex: 1; min-height: 160px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--border); border-radius: 12px; padding: 8px;
+  background: var(--surface);
+  scrollbar-width: thin; scrollbar-color: var(--accent) var(--surface2);
+}
+.ing-list::-webkit-scrollbar { width: 10px; }
+.ing-list::-webkit-scrollbar-track { background: var(--surface2); border-radius: 999px; }
+.ing-list::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 999px; border: 2px solid var(--surface2); }
+.ing-empty { color: var(--muted); font-size: 0.85rem; text-align: center; padding: 24px 0; }
+.ing-row { display: flex; gap: 12px; justify-content: space-between; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; flex-shrink: 0; background: var(--bg); }
 .ing-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ing-row .st { flex-shrink: 0; color: var(--muted); }
 .ing-row.done .st { color: #10b981; }
 .ing-row.error .st { color: #ef4444; }
+.ing-row.cancelled .st { color: var(--amber); }
 .ing-btn { cursor: pointer; padding: 9px 18px; border-radius: 8px; border: 1px solid #4f46e5; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; font-size: 0.85rem; font-weight: 700; }
 .ing-btn:hover { filter: brightness(1.1); }
+.ing-btn-danger { border-color: #b91c1c; background: linear-gradient(135deg, #ef4444, #dc2626); }
+@media (max-height: 640px) {
+  .ing-shell { overflow-y: auto; }
+  .ing-list { min-height: 240px; }
+}

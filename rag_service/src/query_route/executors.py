@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+import tracing
 from chunking_techniques.text import chunk_text
 from hybrid_retrieval.rerank import rerank
 from hybrid_retrieval.search import search_docs
@@ -49,13 +50,23 @@ async def execute(plan: QueryPlan, routes: list[str], identity: Identity,
     passthrough: list[Evidence] = []
 
     async def _docs():
-        return await search_docs(plan, identity, broaden)
+        with tracing.observe("search-docs", as_type="retriever",
+                             input={"queries": len(plan.sub_questions) or 1, "broaden": broaden}) as obs:
+            res = await search_docs(plan, identity, broaden)
+            obs.update(output=tracing.hits([ev for ev, _ in res]))
+            return res
 
     async def _gdrive():
-        return [(ev, plan.standalone_question) for ev in await gdrive_evidence(plan)]
+        with tracing.observe("gdrive", as_type="tool", input={"question": plan.standalone_question}) as obs:
+            res = [(ev, plan.standalone_question) for ev in await gdrive_evidence(plan)]
+            obs.update(output=tracing.hits([ev for ev, _ in res]))
+            return res
 
     async def _web():
-        return [(ev, plan.standalone_question) for ev in await web_evidence(plan)]
+        with tracing.observe("web-search", as_type="tool", input={"question": plan.standalone_question}) as obs:
+            res = [(ev, plan.standalone_question) for ev in await web_evidence(plan)]
+            obs.update(output=tracing.hits([ev for ev, _ in res]))
+            return res
 
     runners = {"docs": _docs, "gdrive": _gdrive, "web": _web}
     names = [r for r in dict.fromkeys(routes) if r in runners]
@@ -85,7 +96,9 @@ async def execute(plan: QueryPlan, routes: list[str], identity: Identity,
     if "direct" in routes:
         status["direct"] = "skipped"
 
-    reranked = await rerank(candidates)
+    with tracing.observe("rerank", input={"candidates": len(candidates)}) as obs:
+        reranked = await rerank(candidates)
+        obs.update(output=tracing.hits(reranked))
     evidence = passthrough + reranked
     return RetrieveResponse(
         evidence=evidence,

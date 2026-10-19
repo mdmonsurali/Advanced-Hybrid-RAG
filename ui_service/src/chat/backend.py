@@ -114,11 +114,37 @@ async def index_status(doc_id: str) -> dict | None:
 
 # ── llm_service ──────────────────────────────────────────────────────────
 
+# Calls straight to llm_service first take an `llm` GPU lease from the
+# orchestrator, which waits out a GPU swap to OCR (no-op when GPU_SWAP=false).
+GPU_WAIT_TIMEOUT = float(os.environ.get("GPU_WAIT_TIMEOUT", "1800"))
+
+
+async def _gpu_acquire(client: httpx.AsyncClient) -> str | None:
+    try:
+        resp = await client.post(f"{ORCHESTRATOR_SERVICE_URL}/gpu/acquire/llm",
+                                 timeout=httpx.Timeout(GPU_WAIT_TIMEOUT, connect=10))
+        return resp.json().get("lease_id") if resp.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        return None     # orchestrator down: call the LLM anyway
+
+
+async def _gpu_release(client: httpx.AsyncClient, lease_id: str | None) -> None:
+    if lease_id and lease_id != "noop":
+        try:
+            await client.post(f"{ORCHESTRATOR_SERVICE_URL}/gpu/release/{lease_id}", timeout=10)
+        except httpx.HTTPError:
+            pass        # the lease expires on its own
+
+
 async def select_tools(question: str, tools: list[dict]) -> dict:
     try:
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(f"{LLM_SERVICE_URL}/tasks/select-tools",
-                                     json={"question": question, "tools": tools})
+            lease_id = await _gpu_acquire(client)
+            try:
+                resp = await client.post(f"{LLM_SERVICE_URL}/tasks/select-tools",
+                                         json={"question": question, "tools": tools})
+            finally:
+                await _gpu_release(client, lease_id)
     except httpx.HTTPError as e:
         raise BackendError("llm_service", f"unreachable ({e.__class__.__name__})") from e
     if resp.status_code != 200:

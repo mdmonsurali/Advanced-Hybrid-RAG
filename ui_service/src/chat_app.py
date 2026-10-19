@@ -154,6 +154,8 @@ async def answer(question: str, headers: dict, command: Optional[str] = None,
         options["route_hint"] = route_hint
     if options["route_hint"] != ["catalog"]:
         options["external_evidence"] = await mcp_tools.collect_evidence(question)
+    # Groups this thread's questions into one Langfuse session.
+    options["session_id"] = cl.context.session.thread_id
 
     history = cl.user_session.get("history") or []
     final = await pipeline_stream.run(question, history, options, headers,

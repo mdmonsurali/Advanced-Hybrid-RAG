@@ -11,7 +11,7 @@ Exposes:
     DELETE /ingest/{doc_id}            drop a document's chunks                     [ocr_service]
     PATCH  /ingest/{doc_id}/access     {"access_level": "private"|"shared"}        [ocr_service]
     GET    /ingest/{doc_id}            index entry: status, chunks, doc_type, topic, summary
-    POST   /ingest/sync                backfill missing / stale, drop orphans (?upgrade_heuristic=true)
+    POST   /ingest/sync                backfill missing / stale, drop orphans (?upgrade_heuristic=true redoes LLM-less ones)
     POST   /route                      STEP 5    {plan}                      -> {routes, reason}
     POST   /retrieve                   STEP 5-7  {plan, routes, broaden, external_evidence} -> reranked evidence
     /mcp/gdrive/                       FastMCP streamable HTTP (Bearer MCP_TOKEN)
@@ -29,10 +29,11 @@ import logging
 import os
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from starlette.responses import JSONResponse
 
 import storage
+import tracing
 from embeddings import dense, reranker, sparse
 from identity import Identity, require_user
 from ingestion import pipeline
@@ -92,7 +93,7 @@ async def lifespan(app: FastAPI):
         _ready["models"] = True
 
         qdrant_store.init_client()
-        await qdrant_store.ensure_collection(dense.dim())
+        await qdrant_store.ensure_collection(dense.dim(), dense.EMBED_MODEL)
         _ready["qdrant"] = True
 
         storage.init_minio()
@@ -105,6 +106,7 @@ async def lifespan(app: FastAPI):
             log.warning("MCP_TOKEN is empty: /mcp/* endpoints accept unauthenticated requests")
         log.info("rag_service ready")
         yield
+    tracing.shutdown()      # flush pending Langfuse spans
 
 
 async def _startup_sync() -> None:
@@ -188,12 +190,16 @@ async def index_entry(doc_id: str):
 
 
 @app.post("/route", response_model=RouteResponse)
-async def route(body: RouteRequest, identity: Identity = Depends(require_user)):
-    return await router.decide(body.plan, identity, body.route_hint, body.deny_routes)
+async def route(body: RouteRequest, request: Request, identity: Identity = Depends(require_user)):
+    with tracing.observe("route", headers=request.headers,
+                         input={"question": body.plan.standalone_question, "intent": body.plan.intent,
+                                "route_hint": body.route_hint, "deny_routes": body.deny_routes}) as obs:
+        return tracing.output(obs, await router.decide(body.plan, identity, body.route_hint,
+                                                       body.deny_routes))
 
 
 @app.post("/retrieve", response_model=RetrieveResponse)
-async def retrieve(body: RetrieveRequest, identity: Identity = Depends(require_user)):
+async def retrieve(body: RetrieveRequest, request: Request, identity: Identity = Depends(require_user)):
     allowed = router.available_routes(identity) + ["mcp"]
     routes = [r for r in body.routes if r in allowed]
     if not routes and not body.external_evidence:
@@ -201,5 +207,13 @@ async def retrieve(body: RetrieveRequest, identity: Identity = Depends(require_u
     # Tool output comes from arbitrary servers: never treat it as the user's
     # own data, so validation keeps masking any PII it contains.
     external = [ev.model_copy(update={"owned": False}) for ev in body.external_evidence]
-    return await execute(body.plan, routes, identity, body.broaden, external,
-                         debug=body.debug and identity.role in {"admin", "master"})
+    with tracing.observe("retrieve", as_type="retriever", headers=request.headers,
+                         input={"question": body.plan.standalone_question, "routes": routes,
+                                "sub_questions": body.plan.sub_questions,
+                                "external_evidence": len(external)},
+                         metadata={"broaden": body.broaden}) as obs:
+        res = await execute(body.plan, routes, identity, body.broaden, external,
+                            debug=body.debug and identity.role in {"admin", "master"})
+        obs.update(output={"route_status": res.route_status, "stats": res.stats.model_dump(),
+                           "evidence": tracing.hits(res.evidence)})
+        return res

@@ -60,6 +60,8 @@ TEMPLATES_DIR = _HERE / "templates"
 
 OCR_SERVICE_URL = os.environ.get("OCR_SERVICE_URL", "http://ocr_service:8001")
 RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://rag_service:8003")
+# /ocr waits for a GPU swap (LLM stop + Docling load) before converting.
+OCR_PROXY_TIMEOUT = float(os.environ.get("OCR_PROXY_TIMEOUT", "1800"))
 ORCHESTRATOR_SERVICE_URL = os.environ.get(
     "ORCHESTRATOR_SERVICE_URL", "http://orchestrator_service:8004",
 )
@@ -520,7 +522,7 @@ async def batch_page(request: Request):
 async def ocr(request: Request, file: UploadFile = File(...)):
     user = _require_user(request)
     content = await file.read()
-    async with httpx.AsyncClient(timeout=600) as client:
+    async with httpx.AsyncClient(timeout=OCR_PROXY_TIMEOUT) as client:
         try:
             resp = await client.post(
                 f"{OCR_SERVICE_URL}/ocr",

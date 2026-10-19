@@ -13,8 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
-# CPU-only torch: Docling runs on CPU so the GPU stays free for llm_service.
-RUN pip3 install --no-cache-dir torch torchvision         --index-url https://download.pytorch.org/whl/cpu
+# CUDA torch: with GPU_SWAP=true Docling runs on the GPU while the
+# orchestrator has swapped llm_service out (gpu_worker.py). The in-process
+# converter stays on CPU. Build with TORCH_INDEX=.../whl/cpu for a CPU-only host.
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cu128
+RUN pip3 install --no-cache-dir torch torchvision --index-url ${TORCH_INDEX}
 
 COPY ocr_service/requirements.txt /workspace/ocr_service/
 RUN pip3 install --no-cache-dir -r /workspace/ocr_service/requirements.txt

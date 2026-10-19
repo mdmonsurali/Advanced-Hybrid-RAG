@@ -16,7 +16,8 @@ import os
 import re
 
 from llm_client.client import LLM_CONTEXT_LEN, chat_json, count_tokens
-from prompts.answer import ANSWER_SYSTEM, extract_messages
+from prompts import registry
+from prompts.answer import extract_messages
 from schemas import CompressResponse, Evidence, ExtractOutput, QueryPlan
 
 log = logging.getLogger("llm_service.compression")
@@ -63,6 +64,17 @@ def _dedupe(evidence: list[Evidence]) -> list[Evidence]:
     return [ev for ev, _ in kept]
 
 
+def _drop_repeated_head(prev: str, text: str) -> str:
+    """Leading lines of `text` already in `prev` (the caption, explanation and
+    header row every row group of a table repeats)."""
+    seen = {l.strip() for l in prev.splitlines()}
+    lines = text.strip().splitlines()
+    i = 0
+    while i < len(lines) - 1 and lines[i].strip() in seen:
+        i += 1
+    return "\n".join(lines[i:])
+
+
 def _merge_adjacent(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
     """Merge chunks of the same doc + page whose chunk_index is consecutive,
     keeping the best score and the earlier chunk's id for citations."""
@@ -79,7 +91,7 @@ def _merge_adjacent(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
         prev = by_key.get(key)
         if (ev.doc_id and prev is not None and prev.chunk_index is not None
                 and ev.chunk_index is not None and ev.chunk_index == prev.chunk_index + 1):
-            prev.text = f"{prev.text.rstrip()}\n{ev.text.lstrip()}"
+            prev.text = f"{prev.text.rstrip()}\n{_drop_repeated_head(prev.text, ev.text)}"
             prev.score = max(prev.score, ev.score)
             prev.chunk_index = ev.chunk_index
             merged += 1
@@ -111,7 +123,7 @@ async def compress(plan: QueryPlan, evidence: list[Evidence]) -> CompressRespons
     ranked, merged = _merge_adjacent(ranked)
     dropped = before - len(ranked) - merged
 
-    system_tokens = count_tokens(ANSWER_SYSTEM) + count_tokens(plan.standalone_question)
+    system_tokens = count_tokens(registry.text("rag/answer", language=plan.language)) + count_tokens(plan.standalone_question)
     budget = LLM_CONTEXT_LEN - ANSWER_TOKENS - PROMPT_OVERHEAD_TOKENS - system_tokens
 
     # First pass: keep everything that fits; queue long chunks that don't.

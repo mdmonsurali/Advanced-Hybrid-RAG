@@ -1,0 +1,12 @@
+<!-- Keeps Langfuse's ClickHouse inside its container memory limit
+     (LANGFUSE_CLICKHOUSE_MEMORY_LIMIT, default 2G). ClickHouse's defaults are
+     sized for a dedicated server: a 5 GB mark cache alone would exceed it. -->
+<clickhouse>
+    <max_server_memory_usage_to_ram_ratio>0.75</max_server_memory_usage_to_ram_ratio>
+    <mark_cache_size>268435456</mark_cache_size>
+    <index_mark_cache_size>67108864</index_mark_cache_size>
+    <uncompressed_cache_size>16777216</uncompressed_cache_size>
+    <logger>
+        <level>warning</level>
+    </logger>
+</clickhouse>

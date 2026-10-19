@@ -8,6 +8,7 @@
     compressed      llm  /tasks/compress      (STEP 8)
     generating      llm  /tasks/generate      (STEP 9)
     validated       llm  /tasks/validate      (STEP 10)
+    gpu_wait        waiting for the GPU while it is swapped to OCR (gpu_swap.py)
     answer          final answer + citations + verdict
     error           a service failed; the stream ends
 
@@ -31,6 +32,8 @@ import time
 from typing import AsyncIterator
 
 import clients
+import gpu_swap
+import tracing
 from clients import ServiceError
 from identity import Identity
 
@@ -77,7 +80,43 @@ def _dbg(on: bool, key: str, evs: list[dict] | None) -> dict:
 
 async def run(question: str, history: list[dict], identity: Identity,
               options: dict | None = None) -> AsyncIterator[Event]:
+    """The pipeline inside one Langfuse trace. The `answer` event carries the
+    trace id so the UI can attach 👍/👎 feedback to it. Runs under an `llm`
+    GPU lease; while the GPU is swapped to OCR the wait streams as `gpu_wait`."""
     options = options or {}
+    lease_id = None
+    async for kind, data in gpu_swap.wait_lease("llm"):
+        if kind == "lease":
+            lease_id = data["id"]
+        else:
+            yield "gpu_wait", data
+    async with gpu_swap.renewing(lease_id):
+        async for event, data in _traced(question, history, identity, options):
+            yield event, data
+
+
+async def _traced(question: str, history: list[dict], identity: Identity,
+                  options: dict) -> AsyncIterator[Event]:
+    with tracing.trace_question(question, str(identity.id), identity.role,
+                                options.get("session_id"), options) as root:
+        trace_id = tracing.current_trace_id()
+        async for event, data in _run(question, history, identity, options):
+            if event == "understanding":
+                root.update(metadata={"intent": data.get("intent"), "language": data.get("language")})
+            elif event == "answer":
+                data = {**data, "trace_id": trace_id}
+                root.update(output={"answer": data.get("answer_markdown"), "action": data.get("action"),
+                                    "citations": len(data.get("citations") or [])},
+                            metadata={"routes": data.get("routes"), "attempts": data.get("attempts"),
+                                      "elapsed_sec": data.get("elapsed_sec")})
+                tracing.score_answer(trace_id, data)
+            elif event == "error":
+                root.update(level="ERROR", status_message=f"{data.get('service')}: {data.get('detail')}")
+            yield event, data
+
+
+async def _run(question: str, history: list[dict], identity: Identity,
+               options: dict) -> AsyncIterator[Event]:
     route_hint: list[str] = options.get("route_hint") or []
     deny_routes: list[str] = options.get("deny_routes") or []
     answer_style: str = options.get("answer_style") or "auto"

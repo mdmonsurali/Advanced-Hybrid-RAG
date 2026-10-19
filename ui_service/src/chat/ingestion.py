@@ -79,7 +79,7 @@ async def _ingest_one(el, headers: dict, sem: asyncio.Semaphore) -> dict:
 
         if entry.get("status") == "ok":
             step.output = (f"{head}\n- ✅ Indexed **{entry.get('chunk_count', 0)}** chunks "
-                           f"({entry.get('table_chunks', 0)} tables) · "
+                           f"({entry.get('table_chunks', 0)} table, {entry.get('figure_chunks', 0)} figure) · "
                            f"type **{entry.get('doc_type', '?')}** · topic _{entry.get('topic', '')}_")
             return {"name": name, "doc_id": doc_id, "status": "ok", "entry": entry}
         step.is_error = True
