@@ -1,8 +1,10 @@
-# CI: runs automatically on every push and pull request.
+# CI: runs on every pull request, and on pushes to main (e.g. after a merge).
+# Feature branches are checked through their pull request, so they do not run twice.
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
