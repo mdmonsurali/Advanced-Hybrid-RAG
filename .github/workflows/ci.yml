@@ -9,9 +9,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -26,7 +26,7 @@ jobs:
   compose:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # .env is not in git, so validate with the example values instead.
       - run: docker compose --env-file .env.example config -q
@@ -39,7 +39,7 @@ jobs:
       matrix:
         service: [ui_service, auth_service, orchestrator_service, rag_service, ocr_service, llm_service]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: >
           docker buildx build --check
           -f ${{ matrix.service }}/Dockerfile
@@ -54,7 +54,7 @@ jobs:
       matrix:
         service: [ui_service, auth_service, orchestrator_service, rag_service]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Free disk space
         run: |
