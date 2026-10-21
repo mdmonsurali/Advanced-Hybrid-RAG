@@ -206,8 +206,9 @@ services:
       context: .
       dockerfile: llm_service/Dockerfile
       args:
-        HF_TOKEN: ${HF_TOKEN:-}
         LLM_MODEL: ${LLM_MODEL:-LostGentoo/Qwen3.5-4B-AWQ}
+      secrets:
+        - hf_token
     image: ahr-llm:latest
     container_name: llm_service
     environment:
@@ -519,3 +520,8 @@ volumes:
 networks:
   rag-network:
     driver: bridge
+
+# Build-time secrets (mounted only while building, never saved in the image).
+secrets:
+  hf_token:
+    environment: HF_TOKEN
