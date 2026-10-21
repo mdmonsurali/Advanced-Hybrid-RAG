@@ -1,3 +1,5 @@
+# check=skip=SecretsUsedInArgOrEnv
+# (false positive: AUTH_DATA_FILE is a file path, not a secret)
 FROM python:3.11.15-slim-trixie
 
 ENV PYTHONUNBUFFERED=1
