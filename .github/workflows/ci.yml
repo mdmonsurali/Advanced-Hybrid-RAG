@@ -1,0 +1,65 @@
+# CI: runs automatically on every push and pull request.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install ruff
+
+      # Only real errors: syntax errors, undefined names, etc. (not style).
+      - run: >
+          ruff check --select E9,F63,F7,F82
+          auth_service llm_service ocr_service orchestrator_service
+          rag_service ui_service langfuse_service
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # .env is not in git, so validate with the example values instead.
+      - run: docker compose --env-file .env.example config -q
+
+  # Lint every Dockerfile (fast, no build).
+  dockerfile-check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ui_service, auth_service, orchestrator_service, rag_service, ocr_service, llm_service]
+    steps:
+      - uses: actions/checkout@v4
+      - run: >
+          docker buildx build --check
+          -f ${{ matrix.service }}/Dockerfile
+          ${{ matrix.service == 'ui_service' && 'ui_service' || '.' }}
+
+  # Fully build the images that fit on a GitHub runner.
+  # ocr_service (~16 GB) and llm_service (~64 GB) are too big, so they only get dockerfile-check.
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ui_service, auth_service, orchestrator_service, rag_service]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+
+      - run: docker compose --env-file .env.example build ${{ matrix.service }}
