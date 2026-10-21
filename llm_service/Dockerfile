@@ -12,12 +12,13 @@ RUN pip3 install --no-cache-dir -r /workspace/llm_service/requirements.txt \
 # Pre-bake the Qwen3.5 weights into the image so cold start does not depend on
 # a runtime HuggingFace download. The MTP head is skipped (no speculative
 # decoding on a 6 GB card).
-ARG HF_TOKEN=""
 ARG LLM_MODEL=LostGentoo/Qwen3.5-4B-AWQ
 ENV HF_HOME=/opt/hf-cache
 # huggingface_hub >= 1.0 ships the CLI as `hf`; older images only have
-# `huggingface-cli`.
-RUN export HF_TOKEN="${HF_TOKEN}"; \
+# `huggingface-cli`. HF_TOKEN comes in as a build secret, so it is never
+# stored in the image layers or history.
+RUN --mount=type=secret,id=hf_token,required=false \
+    export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)"; \
     (hf download "${LLM_MODEL}" --exclude "model_mtp.safetensors" \
      || huggingface-cli download "${LLM_MODEL}" --exclude "model_mtp.safetensors") && \
     echo "llm weights cached under ${HF_HOME}"

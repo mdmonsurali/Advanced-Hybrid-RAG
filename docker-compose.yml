@@ -58,7 +58,9 @@ services:
       - "${AUTH_SERVICE_PORT:-8002}:8002"
     environment:
       - MASTER_USERNAME=${MASTER_USERNAME:-${ADMIN_USERNAME:-master}}
-      - MASTER_PASSWORD=${MASTER_PASSWORD:-${ADMIN_PASSWORD:?MASTER_PASSWORD or ADMIN_PASSWORD must be set}}
+      # Empty is caught by auth_service/src/bootstrap.py at startup. A nested ${...:?}
+      # here breaks newer Compose versions even when MASTER_PASSWORD is set.
+      - MASTER_PASSWORD=${MASTER_PASSWORD:-${ADMIN_PASSWORD:-}}
       - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-12}
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
       - OCR_SERVICE_URL=http://ocr_service:8001
@@ -206,8 +208,9 @@ services:
       context: .
       dockerfile: llm_service/Dockerfile
       args:
-        HF_TOKEN: ${HF_TOKEN:-}
         LLM_MODEL: ${LLM_MODEL:-LostGentoo/Qwen3.5-4B-AWQ}
+      secrets:
+        - hf_token
     image: ahr-llm:latest
     container_name: llm_service
     environment:
@@ -519,3 +522,8 @@ volumes:
 networks:
   rag-network:
     driver: bridge
+
+# Build-time secrets (mounted only while building, never saved in the image).
+secrets:
+  hf_token:
+    environment: HF_TOKEN
