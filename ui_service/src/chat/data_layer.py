@@ -23,9 +23,8 @@ import logging
 import os
 import uuid
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from chainlit.data.base import BaseDataLayer
 from chainlit.types import (
@@ -59,7 +58,7 @@ THREAD_CACHE_SIZE = 256
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class _Bytes:
@@ -78,7 +77,7 @@ class _Bytes:
 
 
 class MinioDataLayer(BaseDataLayer):
-    def __init__(self, client: Optional[Minio] = None):
+    def __init__(self, client: Minio | None = None):
         self.client = client or Minio(
             MINIO_ENDPOINT,
             access_key=MINIO_ACCESS_KEY,
@@ -86,14 +85,14 @@ class MinioDataLayer(BaseDataLayer):
             secure=MINIO_SECURE,
             region=MINIO_REGION,
         )
-        self._threads: "OrderedDict[str, dict]" = OrderedDict()
-        self._step_thread: Dict[str, str] = {}  # step id -> thread id
-        self._feedback_step: Dict[str, str] = {}  # feedback id -> step id
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._threads: OrderedDict[str, dict] = OrderedDict()
+        self._step_thread: dict[str, str] = {}  # step id -> thread id
+        self._feedback_step: dict[str, str] = {}  # feedback id -> step id
+        self._locks: dict[str, asyncio.Lock] = {}
 
     # ── MinIO helpers ───────────────────────────────────────────────────
 
-    def _get(self, key: str) -> Optional[bytes]:
+    def _get(self, key: str) -> bytes | None:
         try:
             resp = self.client.get_object(MINIO_BUCKET, key)
         except S3Error as e:
@@ -136,7 +135,7 @@ class MinioDataLayer(BaseDataLayer):
         self._threads[thread["id"]] = thread
         self._threads.move_to_end(thread["id"])
         while len(self._threads) > THREAD_CACHE_SIZE:
-            old_id, old = self._threads.popitem(last=False)
+            _old_id, old = self._threads.popitem(last=False)
             for step in old.get("steps", []):
                 self._step_thread.pop(step["id"], None)
         for step in thread.get("steps", []):
@@ -145,7 +144,7 @@ class MinioDataLayer(BaseDataLayer):
             if fb and fb.get("id"):
                 self._feedback_step[fb["id"]] = step["id"]
 
-    async def _load(self, thread_id: str) -> Optional[dict]:
+    async def _load(self, thread_id: str) -> dict | None:
         if thread_id in self._threads:
             self._threads.move_to_end(thread_id)
             return self._threads[thread_id]
@@ -205,7 +204,7 @@ class MinioDataLayer(BaseDataLayer):
 
     # ── Users ───────────────────────────────────────────────────────────
 
-    async def get_user(self, identifier: str) -> Optional[PersistedUser]:
+    async def get_user(self, identifier: str) -> PersistedUser | None:
         data = await self._get_json(f"chat/users/{identifier}.json")
         if not data:
             return None
@@ -217,7 +216,7 @@ class MinioDataLayer(BaseDataLayer):
             metadata=data.get("metadata") or {},
         )
 
-    async def create_user(self, user: User) -> Optional[PersistedUser]:
+    async def create_user(self, user: User) -> PersistedUser | None:
         existing = await self._get_json(f"chat/users/{user.identifier}.json") or {}
         data = {
             "id": user.identifier,
@@ -273,9 +272,13 @@ class MinioDataLayer(BaseDataLayer):
         if not thread_id:
             return
         content = element.content
-        if content is None and element.path and Path(element.path).is_file():
-            if Path(element.path).stat().st_size <= MAX_ELEMENT_BYTES:
-                content = await asyncio.to_thread(Path(element.path).read_bytes)
+        if (
+            content is None
+            and element.path
+            and Path(element.path).is_file()
+            and Path(element.path).stat().st_size <= MAX_ELEMENT_BYTES
+        ):
+            content = await asyncio.to_thread(Path(element.path).read_bytes)
         el = element.to_dict()
         el.pop("chainlitKey", None)
         el.pop("objectKey", None)
@@ -298,7 +301,7 @@ class MinioDataLayer(BaseDataLayer):
             return None
         return next((e for e in thread["elements"] if e["id"] == element_id), None)
 
-    async def delete_element(self, element_id: str, thread_id: Optional[str] = None):
+    async def delete_element(self, element_id: str, thread_id: str | None = None):
         if not thread_id:
             return
         async with self._lock(thread_id):
@@ -308,7 +311,7 @@ class MinioDataLayer(BaseDataLayer):
                 await self._save(thread)
         await asyncio.to_thread(self._remove_prefix, f"chat/elements/{thread_id}/{element_id}")
 
-    async def element_content(self, thread_id: str, element_id: str) -> Optional[tuple[bytes, str]]:
+    async def element_content(self, thread_id: str, element_id: str) -> tuple[bytes, str] | None:
         """For the /chat-files route: (bytes, mime) of a stored element."""
         el = await self.get_element(thread_id, element_id)
         if el is None:
@@ -325,10 +328,10 @@ class MinioDataLayer(BaseDataLayer):
     async def update_thread(
         self,
         thread_id: str,
-        name: Optional[str] = None,
-        user_id: Optional[str] = None,
-        metadata: Optional[Dict] = None,
-        tags: Optional[List[str]] = None,
+        name: str | None = None,
+        user_id: str | None = None,
+        metadata: dict | None = None,
+        tags: list[str] | None = None,
     ):
         async with self._lock(thread_id):
             thread = await self._load_or_new(thread_id)
@@ -396,7 +399,7 @@ class MinioDataLayer(BaseDataLayer):
             data=data,
         )
 
-    async def get_thread(self, thread_id: str) -> Optional[ThreadDict]:
+    async def get_thread(self, thread_id: str) -> ThreadDict | None:
         thread = await self._load(thread_id)
         if not thread:
             return None
@@ -464,7 +467,7 @@ class MinioDataLayer(BaseDataLayer):
         await feedback_scores.delete(feedback_id)
         return True
 
-    async def get_favorite_steps(self, user_id: str) -> List:
+    async def get_favorite_steps(self, user_id: str) -> list:
         return []  # favorites are disabled in config.toml
 
     async def build_debug_url(self) -> str:

@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator
 
 import httpx
 
@@ -51,22 +51,24 @@ async def stream_chat(
     """Yield (event, data) pairs from orchestrator /chat (SSE)."""
     payload = {"question": question, "history": history, "options": options}
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=10)) as client:
-            async with client.stream(
+        async with (
+            httpx.AsyncClient(timeout=httpx.Timeout(600, connect=10)) as client,
+            client.stream(
                 "POST", f"{ORCHESTRATOR_SERVICE_URL}/chat", json=payload, headers=headers
-            ) as resp:
-                if resp.status_code != 200:
-                    await resp.aread()
-                    raise BackendError("orchestrator", f"HTTP {resp.status_code}: {_detail(resp)}")
-                event, data = "message", ""
-                async for line in resp.aiter_lines():
-                    if line.startswith("event: "):
-                        event = line[7:].strip()
-                    elif line.startswith("data: "):
-                        data += line[6:]
-                    elif line == "" and data:
-                        yield event, json.loads(data)
-                        event, data = "message", ""
+            ) as resp,
+        ):
+            if resp.status_code != 200:
+                await resp.aread()
+                raise BackendError("orchestrator", f"HTTP {resp.status_code}: {_detail(resp)}")
+            event, data = "message", ""
+            async for line in resp.aiter_lines():
+                if line.startswith("event: "):
+                    event = line[7:].strip()
+                elif line.startswith("data: "):
+                    data += line[6:]
+                elif line == "" and data:
+                    yield event, json.loads(data)
+                    event, data = "message", ""
     except httpx.HTTPError as e:
         raise BackendError("orchestrator", f"unreachable ({e.__class__.__name__})") from e
 

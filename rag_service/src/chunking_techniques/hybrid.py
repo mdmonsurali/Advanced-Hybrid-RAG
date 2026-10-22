@@ -36,6 +36,7 @@ from docling_core.types.doc import (
     TableItem,
     TitleItem,
 )
+from pydantic import Field
 
 from chunking_techniques import RawChunk
 from chunking_techniques.figures import figure_chunk
@@ -54,7 +55,7 @@ class _TextOnlySerializer(ChunkingDocSerializer):
     """Serializes everything except tables, pictures and their captions /
     footnotes, which get their own chunks."""
 
-    skip_refs: set[str] = set()
+    skip_refs: set[str] = Field(default_factory=set)
 
     def serialize(
         self, *, item: NodeItem | None = None, visited: set[str] | None = None, **kwargs

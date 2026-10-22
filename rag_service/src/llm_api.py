@@ -7,7 +7,6 @@ from __future__ import annotations
 import os
 
 import httpx
-
 import tracing
 
 LLM_SERVICE_URL = os.getenv("LLM_SERVICE_URL", "http://llm_service:8005")

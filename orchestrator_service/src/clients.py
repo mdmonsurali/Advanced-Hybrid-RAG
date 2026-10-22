@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 
 import httpx
-
 import tracing
 from identity import Identity, identity_headers
 

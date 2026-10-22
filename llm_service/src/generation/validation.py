@@ -11,7 +11,6 @@ import logging
 import os
 import re
 
-from generation.answer import cited_numbers
 from llm_client.client import chat_json
 from prompts.judge import judge_messages
 from schemas import (
@@ -22,6 +21,8 @@ from schemas import (
     ValidateResponse,
     Verdict,
 )
+
+from generation.answer import cited_numbers
 
 log = logging.getLogger("llm_service.validation")
 

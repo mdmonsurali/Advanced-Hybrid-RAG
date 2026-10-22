@@ -20,12 +20,11 @@ import os
 import uuid as _uuid
 from contextlib import asynccontextmanager
 
-import httpx
-from fastapi import Depends, FastAPI, HTTPException, Response, status
-
 import db
+import httpx
 from bootstrap import bootstrap_admin
 from deps import current_session, require_admin
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from schemas import (
     ChangePasswordRequest,
     CreateUserRequest,

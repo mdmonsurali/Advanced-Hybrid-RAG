@@ -17,10 +17,9 @@ import asyncio
 import logging
 import os
 
-from qdrant_client import models
-
 from embeddings import dense, sparse
 from identity import Identity
+from qdrant_client import models
 from schemas import Evidence, QueryPlan
 from vectordb import qdrant_store
 

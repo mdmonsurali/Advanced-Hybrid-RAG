@@ -42,23 +42,21 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
 from urllib.parse import quote
 
+import auth_client
 import httpx
 import uvicorn
-from fastapi import Body, FastAPI, Form, HTTPException, Request, UploadFile, File
+from chainlit.utils import mount_chainlit
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
-    StreamingResponse,
     Response,
+    StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from chainlit.utils import mount_chainlit
-
-import auth_client
 from middleware import AuthMiddleware
 
 _HERE = Path(__file__).parent.resolve()
@@ -96,7 +94,7 @@ app.mount("/static", StaticFiles(directory=str(TEMPLATES_DIR)), name="static")
 # ── Template rendering ──────────────────────────────────────────────────
 
 
-def _render(name: str, *, user: Optional[auth_client.CurrentUser] = None) -> str:
+def _render(name: str, *, user: auth_client.CurrentUser | None = None) -> str:
     """Load a static HTML file and substitute the @@PROFILE_MENU@@ sentinel
     so every page gets the same Profile dropdown without a templating engine."""
     text = (TEMPLATES_DIR / name).read_text(encoding="utf-8")
@@ -333,7 +331,7 @@ def _identity_headers(user: auth_client.CurrentUser) -> dict:
     return {"X-User-Id": user.id, "X-User-Role": user.role}
 
 
-def _safe_next(raw: Optional[str]) -> str:
+def _safe_next(raw: str | None) -> str:
     if not raw:
         return "/"
     if not raw.startswith("/") or raw.startswith("//"):
@@ -353,7 +351,7 @@ async def login_page():
 async def login_submit(
     username: str = Form(...),
     password: str = Form(...),
-    next: Optional[str] = Form(None),
+    next: str | None = Form(None),
 ):
     cookie, body = await auth_client.login(username, password)
     if cookie is None:
@@ -699,7 +697,7 @@ async def delete_document(request: Request, doc_id: str):
     detail = resp.text
     try:
         detail = resp.json().get("detail", detail)
-    except Exception:
+    except (ValueError, AttributeError):  # body is not JSON, or not a JSON object
         pass
     raise HTTPException(status_code=resp.status_code, detail=detail)
 
@@ -741,7 +739,7 @@ async def get_document(request: Request, doc_id: str):
 
 
 @app.post("/ocr/batch")
-async def ocr_batch(request: Request, files: List[UploadFile] = File(...)):
+async def ocr_batch(request: Request, files: list[UploadFile] = File(...)):
     user = _require_user(request)
     file_tuples = []
     for f in files:
@@ -763,7 +761,7 @@ async def ocr_batch(request: Request, files: List[UploadFile] = File(...)):
                             "event: error\n"
                             f'data: {{"status": {resp.status_code}, '
                             f'"detail": {body.decode("utf-8", "replace")!r}}}\n\n'
-                        ).encode("utf-8")
+                        ).encode()
                         return
                     async for chunk in resp.aiter_raw():
                         if chunk:
@@ -851,7 +849,7 @@ async def rag_chat(request: Request, payload: dict = Body(...)):
                             "event: error\n"
                             f'data: {{"service": "orchestrator", "detail": '
                             f"{json.dumps(detail[:300])}}}\n\n"
-                        ).encode("utf-8")
+                        ).encode()
                         return
                     async for chunk in resp.aiter_raw():
                         if chunk:

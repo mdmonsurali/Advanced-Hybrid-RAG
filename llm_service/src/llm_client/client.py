@@ -17,13 +17,12 @@ import asyncio
 import logging
 import os
 import re
-from typing import Type, TypeVar
+from typing import TypeVar
 
 import httpx
-from pydantic import BaseModel, ValidationError
-
 import tracing  # noqa: F401  (configures Langfuse before the wrapper loads)
 from langfuse.openai import AsyncOpenAI
+from pydantic import BaseModel, ValidationError
 
 log = logging.getLogger("llm_service.client")
 
@@ -101,7 +100,7 @@ async def chat_text(
 
 async def chat_json(
     messages: list[dict],
-    schema: Type[T],
+    schema: type[T],
     *,
     temperature: float = 0.0,
     max_tokens: int = 1024,

@@ -15,7 +15,7 @@ Results are on the [Actions tab](https://github.com/mdmonsurali/Advanced-Hybrid-
 
 | Job | What it checks | Services |
 |---|---|---|
-| `lint` | Python syntax errors and undefined names (`ruff`, error rules only), and formatting (`ruff format --check`) | all |
+| `lint` | Full `ruff check` rule set (project exceptions in `ruff.toml`), and formatting (`ruff format --check`) | all |
 | `compose` | `docker-compose.yml` is valid, using `.env.example` | n/a |
 | `dockerfile-check` | Dockerfile mistakes and bad practices (`docker buildx build --check`) | all 6 |
 | `build` | Image builds end to end | ui, auth, orchestrator, rag |
@@ -48,8 +48,15 @@ so they only get `lint` and `dockerfile-check`.
 - [x] **Step 7: Formatting.** Auto-formatted 76 files once with `ruff format` (line length 100,
   set in `ruff.toml`). CI now runs `ruff format --check`, with ruff pinned to `0.17.1`. The
   formatting commit is listed in `.git-blame-ignore-revs`, so `git blame` skips it.
-- [ ] **Step 8: Full lint.** Turn on all configured `ruff` rules. There are 236 issues, 148 of them auto-fixable;
-  fix the rest by hand.
+- [x] **Step 8: Full lint.** CI now runs the full `ruff check` rule set. Issues went from 235 to 0:
+  - 182 were auto-fixed with `ruff check --fix` (modern type hints, sorted imports, unused imports).
+  - 3 rules are switched off in `ruff.toml`, each with its reason:
+    - `BLE001`: `except Exception` is used on purpose. Revisit in Step 10.
+    - `SIM103`: guard clauses are kept.
+    - `B008`: FastAPI `Depends`/`Body`/`File` etc. are allowed as default arguments.
+  - 2 one-line exceptions with reasons: `# noqa: SIM102` in `orchestrator_service/src/gpu_swap.py`,
+    and `# noqa: S110` in `rag_service/src/ingestion/pipeline.py`.
+  - About 10 were fixed by hand: merged `if`/`with`, narrowed one `except`, `Field(default_factory=set)`, and others.
 - [ ] **Step 9: Type checking.** Add `mypy` or `pyright`, review the results, then fix the issues or relax rules.
 
 ### Phase 3: Tests
@@ -72,6 +79,8 @@ so they only get `lint` and `dockerfile-check`.
   `gh run view <run-id> --log-failed`.
 - **Runner versions:** GitHub's runners use newer Docker and Compose versions than a typical local
   install, so a check can pass locally and fail in CI (this happened in Step 5).
-- **Formatting before you push:** `pip install ruff==0.17.1`, then
-  `ruff format auth_service llm_service ocr_service orchestrator_service rag_service ui_service langfuse_service`.
+- **Before you push:** run `pip install ruff==0.17.1` once. Then, on the service folders
+  (`auth_service llm_service ocr_service orchestrator_service rag_service ui_service langfuse_service`), run:
+  - `ruff check --fix <folders>` to auto-fix lint issues, then fix whatever it still lists
+  - `ruff format <folders>` to format the code
 - **Secrets:** `.env` is gitignored and never reaches CI. CI uses `.env.example` (dummy values).

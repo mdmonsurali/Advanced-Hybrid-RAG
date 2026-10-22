@@ -22,13 +22,12 @@ import json as _json
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Body, Depends, FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
-
 import clients
 import gpu_swap
 import pipeline
 import tracing
+from fastapi import Body, Depends, FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from identity import Identity, require_user
 
 log = logging.getLogger("orchestrator")

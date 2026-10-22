@@ -22,13 +22,12 @@ import os
 from pathlib import PurePath
 
 import httpx
-from docling_core.types.doc import DoclingDocument, PictureItem
-from PIL import Image  # installed with sentence-transformers
-
 import llm_api
 import storage
 from chunking_techniques.figures import picture_description
 from chunking_techniques.tables import preceding_paragraph
+from docling_core.types.doc import DoclingDocument, PictureItem
+from PIL import Image  # installed with sentence-transformers
 
 log = logging.getLogger("rag_service.figures")
 

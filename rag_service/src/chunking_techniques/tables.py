@@ -17,7 +17,7 @@ Run table_merge first so a table split over several pages is one table here.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from docling_core.types.doc import (
     DocItemLabel,

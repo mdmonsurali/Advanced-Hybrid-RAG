@@ -23,8 +23,9 @@ from hybrid_retrieval.rerank import rerank
 from hybrid_retrieval.search import search_docs
 from identity import Identity
 from mcp_servers.client import gdrive_evidence, web_evidence
-from query_route.catalog import catalog_evidence
 from schemas import Evidence, QueryPlan, RetrieveResponse, RetrieveStats
+
+from query_route.catalog import catalog_evidence
 
 log = logging.getLogger("rag_service.executors")
 

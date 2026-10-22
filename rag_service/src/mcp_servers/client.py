@@ -14,9 +14,8 @@ import hashlib
 import logging
 import os
 
-from fastmcp import Client
-
 from chunking_techniques.text import chunk_text
+from fastmcp import Client
 from schemas import Evidence, QueryPlan
 
 log = logging.getLogger("rag_service.mcp_client")
@@ -104,13 +103,13 @@ async def web_evidence(plan: QueryPlan) -> list[Evidence]:
 
     async def _page(r: dict) -> list[Evidence]:
         key = hashlib.sha1(r["url"].encode()).hexdigest()[:12]
-        fields = dict(
-            route="web",
-            source=r.get("title") or r["url"],
-            url=r["url"],
-            date=r.get("published"),
-            owned=False,
-        )
+        fields = {
+            "route": "web",
+            "source": r.get("title") or r["url"],
+            "url": r["url"],
+            "date": r.get("published"),
+            "owned": False,
+        }
         try:
             page = await call_tool(WEBSEARCH_MCP_URL, "fetch_page", {"url": r["url"]})
             text = (page or {}).get("text") or ""

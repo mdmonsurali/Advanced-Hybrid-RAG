@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -46,10 +45,10 @@ class CreateUserRequest(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
-    username: Optional[str] = None
-    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
-    role: Optional[str] = None
-    disabled: Optional[bool] = None
+    username: str | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    role: str | None = None
+    disabled: bool | None = None
 
     @field_validator("username")
     @classmethod

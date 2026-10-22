@@ -6,7 +6,7 @@ orchestrator can pass them between services unchanged.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -18,9 +18,9 @@ RouteStatus = Literal["ok", "empty", "unavailable", "skipped"]
 
 
 class Filters(BaseModel):
-    doc_type: Optional[str] = None
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
+    doc_type: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
 
 
 class QueryPlan(BaseModel):
@@ -30,7 +30,7 @@ class QueryPlan(BaseModel):
     filters: Filters = Field(default_factory=Filters)
     language: str = "en"
     ambiguous: bool = False
-    clarifying_question: Optional[str] = None
+    clarifying_question: str | None = None
     rewritten: str = ""
     expansions: list[str] = Field(default_factory=list)
     sub_questions: list[str] = Field(default_factory=list)
@@ -43,12 +43,12 @@ class Evidence(BaseModel):
     text: str
     score: float = 0.0
     source: str = ""
-    doc_id: Optional[str] = None
-    page: Optional[int] = None
-    url: Optional[str] = None
-    date: Optional[str] = None
+    doc_id: str | None = None
+    page: int | None = None
+    url: str | None = None
+    date: str | None = None
     headings: list[str] = Field(default_factory=list)
-    chunk_index: Optional[int] = None
+    chunk_index: int | None = None
     owned: bool = False
 
 

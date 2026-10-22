@@ -47,8 +47,10 @@ def catalog_evidence(plan: QueryPlan, identity: Identity) -> list[Evidence]:
     by_month = Counter((e.get("created_at") or "")[:7] or "unknown" for e in entries)
 
     lines = [
-        f"Document catalog: {len(entries)} documents match "
-        f"({own} uploaded by you, {len(entries) - own} shared by others).",
+        (
+            f"Document catalog: {len(entries)} documents match "
+            f"({own} uploaded by you, {len(entries) - own} shared by others)."
+        ),
     ]
     f = plan.filters
     if f.doc_type or f.date_from or f.date_to:

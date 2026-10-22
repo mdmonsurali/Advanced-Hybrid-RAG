@@ -31,9 +31,9 @@ import logging
 import os
 import time
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import AsyncIterator, Awaitable, Callable, Optional
 
 import docker
 import httpx
@@ -62,7 +62,7 @@ EmitStatus = Callable[[str, dict], Awaitable[None]]
 
 # Docker SDK is synchronous; calls go through to_thread so the event loop
 # never blocks on a stop/start.
-_client: Optional[docker.DockerClient] = None
+_client: docker.DockerClient | None = None
 
 
 def _get_client() -> docker.DockerClient:
@@ -147,7 +147,7 @@ async def start(name: str) -> None:
 
 
 async def wait_healthy(
-    name: str, timeout_s: int = HEALTH_TIMEOUT_SEC, emit: Optional[EmitStatus] = None
+    name: str, timeout_s: int = HEALTH_TIMEOUT_SEC, emit: EmitStatus | None = None
 ) -> None:
     """Poll Inspect.State.Health.Status until 'healthy' or the deadline.
 
@@ -214,12 +214,12 @@ async def _upgrade_heuristic_docs() -> None:
 # ── High-level swaps ──────
 
 
-async def _emit(emit: Optional[EmitStatus], payload: dict) -> None:
+async def _emit(emit: EmitStatus | None, payload: dict) -> None:
     if emit is not None:
         await emit("status", payload)
 
 
-async def swap_to_ocr(emit: Optional[EmitStatus] = None) -> None:
+async def swap_to_ocr(emit: EmitStatus | None = None) -> None:
     """Stop the LLM container (frees its VRAM), then start the OCR GPU worker."""
     if await is_running(LLM_CONTAINER_NAME):
         await _emit(
@@ -233,7 +233,7 @@ async def swap_to_ocr(emit: Optional[EmitStatus] = None) -> None:
     await _emit(emit, {"phase": "swap-to-ocr", "message": "OCR is ready"})
 
 
-async def swap_to_llm(emit: Optional[EmitStatus] = None) -> None:
+async def swap_to_llm(emit: EmitStatus | None = None) -> None:
     """Stop the OCR GPU worker (its process exit frees all VRAM), then start
     the LLM container and wait for its healthcheck."""
     try:
@@ -267,16 +267,16 @@ class _Lease:
 
 class _Arbiter:
     def __init__(self) -> None:
-        self.tenant: Optional[str] = None  # who owns the GPU (None: unknown / failed)
+        self.tenant: str | None = None  # who owns the GPU (None: unknown / failed)
         self.ready = False  # False while a swap runs
-        self.swapping_to: Optional[str] = None
+        self.swapping_to: str | None = None
         self.message = "starting"
-        self.error: Optional[str] = None
+        self.error: str | None = None
         self.leases: dict[str, _Lease] = {}
         self.waiting = {t: 0 for t in TENANTS}
         self.last_used = {t: 0.0 for t in TENANTS}
         self._changed = asyncio.Condition()
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._side_tasks: set[asyncio.Task] = set()
 
     # helpers
@@ -293,14 +293,15 @@ class _Arbiter:
         # New LLM work queues behind waiting OCR so an ingestion batch gets its turn.
         return not (tenant == "llm" and self.waiting["ocr"] > 0)
 
-    def _target(self) -> Optional[str]:
+    def _target(self) -> str | None:
         now = time.monotonic()
         if self.tenant is None:
             return "ocr" if self.waiting["ocr"] or self.held("ocr") else "llm"
+        # One branch per tenant; merging the ifs would blur the if/elif structure.
         if self.tenant == "llm":
             if self.waiting["ocr"] and not self.held("llm"):
                 return "ocr"
-        elif self.tenant == "ocr":
+        elif self.tenant == "ocr":  # noqa: SIM102
             if (
                 not self.held("ocr")
                 and not self.waiting["ocr"]
@@ -384,12 +385,12 @@ class _Arbiter:
             async with self._changed:
                 try:
                     await asyncio.wait_for(self._changed.wait(), timeout=2)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
 
     # leases
     async def acquire(
-        self, tenant: str, ttl: float = LEASE_TTL_SEC, emit: Optional[EmitStatus] = None
+        self, tenant: str, ttl: float = LEASE_TTL_SEC, emit: EmitStatus | None = None
     ) -> str:
         if tenant not in TENANTS:
             raise ValueError(f"unknown tenant {tenant!r}")
@@ -416,7 +417,7 @@ class _Arbiter:
                         )
                     try:
                         await asyncio.wait_for(self._changed.wait(), timeout=5)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         pass
                 lid = uuid.uuid4().hex
                 self.leases[lid] = _Lease(tenant, time.monotonic() + ttl)
@@ -507,7 +508,7 @@ async def renewing(lease_id: str) -> AsyncIterator[str]:
 
 
 @asynccontextmanager
-async def lease(tenant: str, emit: Optional[EmitStatus] = None) -> AsyncIterator[str]:
+async def lease(tenant: str, emit: EmitStatus | None = None) -> AsyncIterator[str]:
     """In-process lease, renewed in the background while the body runs."""
     lid = await arbiter.acquire(tenant, emit=emit)
     async with renewing(lid):

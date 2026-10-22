@@ -8,7 +8,7 @@ the `web` route.
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -26,7 +26,7 @@ async def search(
     query: Annotated[str, Field(description="Search query")],
     limit: Annotated[int, Field(ge=1, le=10, description="Number of results")] = 5,
     recency_days: Annotated[
-        Optional[int], Field(ge=1, description="Only results from the last N days")
+        int | None, Field(ge=1, description="Only results from the last N days")
     ] = None,
 ) -> list[dict]:
     """Search the web. Returns [{title, url, snippet, published}]."""

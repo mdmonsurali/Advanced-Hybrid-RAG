@@ -29,7 +29,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import clients
 import gpu_swap

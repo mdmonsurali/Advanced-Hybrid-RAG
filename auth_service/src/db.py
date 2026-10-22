@@ -14,9 +14,8 @@ import json
 import logging
 import os
 import uuid as _uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger("auth_service.db")
 
@@ -39,7 +38,7 @@ _loaded = False
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ── Persistence ──────────────────────────────────────────────────────────
@@ -113,17 +112,17 @@ def _public(user: dict, with_hash: bool = False) -> dict:
     return out
 
 
-def _find_by_username(username: str) -> Optional[dict]:
+def _find_by_username(username: str) -> dict | None:
     needle = username.lower()
     return next((u for u in _users.values() if u["username"].lower() == needle), None)
 
 
-async def get_user_by_username(username: str) -> Optional[dict]:
+async def get_user_by_username(username: str) -> dict | None:
     user = _find_by_username(username)
     return _public(user, with_hash=True) if user else None
 
 
-async def get_user_by_id(user_id: _uuid.UUID) -> Optional[dict]:
+async def get_user_by_id(user_id: _uuid.UUID) -> dict | None:
     user = _users.get(user_id)
     return _public(user) if user else None
 
@@ -158,7 +157,7 @@ async def count_admins() -> int:
     return sum(1 for u in _users.values() if u["role"] == "admin" and not u["disabled"])
 
 
-async def find_first_user(role: str) -> Optional[dict]:
+async def find_first_user(role: str) -> dict | None:
     """Oldest user with `role` (used by the master bootstrap)."""
     matches = sorted(
         (u for u in _users.values() if u["role"] == role), key=lambda u: u["created_at"]
@@ -169,7 +168,7 @@ async def find_first_user(role: str) -> Optional[dict]:
 _USER_UPDATE_COLS = {"username", "password_hash", "role", "must_change_password", "disabled"}
 
 
-async def update_user(user_id: _uuid.UUID, **fields) -> Optional[dict]:
+async def update_user(user_id: _uuid.UUID, **fields) -> dict | None:
     async with _lock:
         user = _users.get(user_id)
         if user is None:
@@ -208,7 +207,7 @@ async def create_session(user_id: _uuid.UUID, ttl: timedelta) -> dict:
     return dict(sess)
 
 
-async def fetch_session_with_user(session_id: _uuid.UUID) -> Optional[dict]:
+async def fetch_session_with_user(session_id: _uuid.UUID) -> dict | None:
     """Return {session_id, user_id, expires_at, username, role, must_change_password,
     disabled} or None if expired / missing / user disabled."""
     sess = _sessions.get(session_id)
@@ -243,7 +242,7 @@ async def delete_session(session_id: _uuid.UUID) -> None:
 
 
 async def delete_user_sessions(
-    user_id: _uuid.UUID, except_session: Optional[_uuid.UUID] = None
+    user_id: _uuid.UUID, except_session: _uuid.UUID | None = None
 ) -> None:
     async with _lock:
         doomed = [

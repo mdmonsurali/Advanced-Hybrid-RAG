@@ -11,18 +11,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
-
-from docling_core.types.doc import DoclingDocument
+from datetime import UTC, datetime
 
 import llm_api
 import storage
 import tracing
 from chunking_techniques.hybrid import build_chunker, chunk_document
 from chunking_techniques.table_merge import merge_cross_page_tables
+from docling_core.types.doc import DoclingDocument
 from embeddings import dense, sparse
-from ingestion import figures, metadata
 from vectordb import qdrant_store
+
+from ingestion import figures, metadata
 
 log = logging.getLogger("rag_service.ingestion")
 
@@ -37,7 +37,7 @@ _running: set[str] = set()
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def init() -> None:
@@ -151,8 +151,8 @@ def schedule(doc_id: str) -> bool:
             if _degraded(entry) and await llm_api.healthy():
                 log.info("[ingest] %s indexed without the LLM, which is back: re-indexing", doc_id)
                 await ingest(doc_id)
-        except Exception:
-            pass  # already logged + recorded
+        except Exception:  # noqa: S110  ingest() already logged + recorded it
+            pass
         finally:
             _running.discard(doc_id)
 

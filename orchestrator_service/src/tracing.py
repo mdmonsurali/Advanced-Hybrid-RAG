@@ -19,8 +19,9 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from typing import Any, Iterator, Mapping
+from typing import Any
 
 log = logging.getLogger("orchestrator.tracing")
 
@@ -32,7 +33,7 @@ ENABLED = (
 if not ENABLED:
     os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
-from langfuse import get_client, propagate_attributes  # noqa: E402  (reads the env above)
+from langfuse import get_client, propagate_attributes  # must stay below the env setup above
 
 if not ENABLED:  # off on purpose: skip the SDK's "initialized without public_key" warning
     logging.getLogger("langfuse").setLevel(logging.ERROR)
