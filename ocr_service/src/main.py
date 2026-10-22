@@ -65,6 +65,7 @@ RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://rag_service:8003")
 # Identity — trusted from ui_service over the docker network. Drop the
 # host port mapping for 8001 in production so this header can't be forged.
 
+
 class Identity:
     __slots__ = ("id", "role")
 
@@ -123,6 +124,7 @@ def _notify_rag(method: str, path: str, payload: dict | None = None) -> None:
 
 # Lifespan: Docling models + MinIO client + document index
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await asyncio.to_thread(docling_engine.init_converter)
@@ -138,22 +140,22 @@ app = FastAPI(title="Docling OCR Service", version="3.0", lifespan=lifespan)
 
 class _SilencePathsFilter(logging.Filter):
     """Drop uvicorn access lines for /health so the actual events show."""
+
     def __init__(self, paths: tuple[str, ...]) -> None:
         super().__init__()
         self._paths = paths
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not any(f' {p} ' in msg for p in self._paths)
+        return not any(f" {p} " in msg for p in self._paths)
 
 
-logging.getLogger("uvicorn.access").addFilter(
-    _SilencePathsFilter(("/health",))
-)
+logging.getLogger("uvicorn.access").addFilter(_SilencePathsFilter(("/health",)))
 
 
 # GPU worker — called only by orchestrator_service's gpu_swap over the docker
 # network (no identity: drop the host port mapping for 8001 in production).
+
 
 @app.post("/gpu/enable")
 async def gpu_enable():
@@ -178,10 +180,12 @@ async def gpu_status():
 
 # Pipeline helpers
 
+
 def _detect_scan_type(in_path: Path) -> str:
     """Return 'native' if file has extractable text, else 'scanned'.
     Metadata only: Docling decides per region where OCR is needed."""
     import pypdfium2 as pdfium  # local import keeps cold start tight
+
     ext = in_path.suffix.lower()
     if ext in {".png", ".jpg", ".jpeg"}:
         return "scanned"
@@ -219,9 +223,11 @@ def _docx_page_count(in_path: Path) -> int:
     return 1
 
 
-async def _upload_picture_assets(doc_id: _uuid.UUID,
-                                 pictures: List[tuple[str, Image.Image]]) -> None:
+async def _upload_picture_assets(
+    doc_id: _uuid.UUID, pictures: List[tuple[str, Image.Image]]
+) -> None:
     """PNG-encode each picture and upload it to MinIO under images/{fname}."""
+
     async def _go(fname: str, img: Image.Image):
         buf = io.BytesIO()
         img.save(buf, format="PNG")
@@ -235,15 +241,22 @@ def _html_to_docx(html: str) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "output.html"
         src.write_text(html, encoding="utf-8")
-        out = _libreoffice_convert(src, Path(tmp), "docx:MS Word 2007 XML",
-                                   PREVIEW_TIMEOUT_SEC, infilter="HTML (StarWriter)")
+        out = _libreoffice_convert(
+            src,
+            Path(tmp),
+            "docx:MS Word 2007 XML",
+            PREVIEW_TIMEOUT_SEC,
+            infilter="HTML (StarWriter)",
+        )
         return out.read_bytes()
 
 
 # Core pipeline — runs against an on-disk temp file, persists to MinIO + DB
 
-async def _run_pipeline(in_path: Path, source_bytes: bytes, original_name: str,
-                         owner_id: _uuid.UUID) -> dict:
+
+async def _run_pipeline(
+    in_path: Path, source_bytes: bytes, original_name: str, owner_id: _uuid.UUID
+) -> dict:
     """Process one document end-to-end:
        1. Create metadata with status=queued, PUT source to MinIO.
        2. Docling convert → markdown / DoclingDocument JSON / DOCX bytes.
@@ -280,7 +293,7 @@ async def _run_pipeline(in_path: Path, source_bytes: bytes, original_name: str,
         )
 
         md_key, json_key, docx_key = await asyncio.gather(
-            storage.put_artifact(doc_id, "md",   md_bytes),
+            storage.put_artifact(doc_id, "md", md_bytes),
             storage.put_artifact(doc_id, "json", json_bytes),
             storage.put_artifact(doc_id, "docx", docx_bytes),
         )
@@ -300,12 +313,12 @@ async def _run_pipeline(in_path: Path, source_bytes: bytes, original_name: str,
         _notify_rag("POST", f"/ingest/{doc_id}")
 
         return {
-            "document_id":   str(doc_id),
+            "document_id": str(doc_id),
             "original_name": original_name,
-            "status":        "ok",
-            "scan_type":     scan_type,
-            "page_count":    page_count,
-            "elapsed_sec":   elapsed,
+            "status": "ok",
+            "scan_type": scan_type,
+            "page_count": page_count,
+            "elapsed_sec": elapsed,
         }
     except Exception as exc:
         await storage.update_document(doc_id, status="error", error=str(exc))
@@ -319,8 +332,9 @@ async def _run_pipeline(in_path: Path, source_bytes: bytes, original_name: str,
 _soffice_lock = threading.Lock()
 
 
-def _libreoffice_convert(src: Path, outdir: Path, target: str, timeout: int,
-                         infilter: str | None = None) -> Path:
+def _libreoffice_convert(
+    src: Path, outdir: Path, target: str, timeout: int, infilter: str | None = None
+) -> Path:
     """Convert `src` with headless LibreOffice to `target` (e.g. "pdf" or
     "docx:MS Word 2007 XML") and return the output path."""
     cmd = ["libreoffice", "--headless"]
@@ -350,6 +364,7 @@ def _convert_to_pdf(src: Path, outdir: Path, timeout: int) -> Path:
 
 # Routes
 
+
 @app.get("/health")
 async def health():
     if not docling_engine.is_ready():
@@ -378,8 +393,9 @@ async def ocr(file: UploadFile = File(...), identity: Identity = Depends(require
     in_path.write_bytes(content)
 
     try:
-        return await _run_pipeline(in_path, source_bytes=content, original_name=name,
-                                   owner_id=identity.id)
+        return await _run_pipeline(
+            in_path, source_bytes=content, original_name=name, owner_id=identity.id
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -387,18 +403,21 @@ async def ocr(file: UploadFile = File(...), identity: Identity = Depends(require
         raise HTTPException(500, f"Pipeline failed: {exc}")
     finally:
         import shutil
+
         shutil.rmtree(work, ignore_errors=True)
 
 
 # ── SSE batch ──────
+
 
 def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {_json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
 
 
 @app.post("/ocr/batch")
-async def ocr_batch(files: List[UploadFile] = File(...),
-                    identity: Identity = Depends(require_user)):
+async def ocr_batch(
+    files: List[UploadFile] = File(...), identity: Identity = Depends(require_user)
+):
     if not files:
         raise HTTPException(400, "No files uploaded")
 
@@ -409,20 +428,33 @@ async def ocr_batch(files: List[UploadFile] = File(...),
         original = Path(upload.filename or "upload").name
         ext = Path(original).suffix.lower()
         if ext not in SUPPORTED_EXTS:
-            prepared.append({"original_name": original, "ext": ext,
-                             "content": None,
-                             "early_error": f"Unsupported file type: {ext}"})
+            prepared.append(
+                {
+                    "original_name": original,
+                    "ext": ext,
+                    "content": None,
+                    "early_error": f"Unsupported file type: {ext}",
+                }
+            )
             continue
         content = await upload.read()
         if not content:
-            prepared.append({"original_name": original, "ext": ext,
-                             "content": None, "early_error": "Empty upload"})
+            prepared.append(
+                {
+                    "original_name": original,
+                    "ext": ext,
+                    "content": None,
+                    "early_error": "Empty upload",
+                }
+            )
             continue
-        prepared.append({"original_name": original, "ext": ext,
-                         "content": content, "early_error": None})
+        prepared.append(
+            {"original_name": original, "ext": ext, "content": content, "early_error": None}
+        )
 
     async def event_stream():
         import shutil
+
         work_root = Path(tempfile.mkdtemp(prefix="ocr_batch_"))
         t0 = time.perf_counter()
         try:
@@ -434,13 +466,16 @@ async def ocr_batch(files: List[UploadFile] = File(...),
 
             for i, p in enumerate(prepared):
                 if p["early_error"]:
-                    yield _sse("result", {
-                        "index":         i,
-                        "original_name": p["original_name"],
-                        "status":        "error",
-                        "error":         p["early_error"],
-                        "elapsed_sec":   0,
-                    })
+                    yield _sse(
+                        "result",
+                        {
+                            "index": i,
+                            "original_name": p["original_name"],
+                            "status": "error",
+                            "error": p["early_error"],
+                            "elapsed_sec": 0,
+                        },
+                    )
                     continue
 
                 sub = work_root / f"item_{i}"
@@ -450,34 +485,44 @@ async def ocr_batch(files: List[UploadFile] = File(...),
 
                 try:
                     row = await _run_pipeline(
-                        in_path, source_bytes=p["content"],
+                        in_path,
+                        source_bytes=p["content"],
                         original_name=p["original_name"],
                         owner_id=identity.id,
                     )
                     row["index"] = i
                     yield _sse("result", row)
                 except HTTPException as exc:
-                    yield _sse("result", {
-                        "index":         i,
-                        "original_name": p["original_name"],
-                        "status":        "error",
-                        "error":         exc.detail,
-                        "elapsed_sec":   0,
-                    })
+                    yield _sse(
+                        "result",
+                        {
+                            "index": i,
+                            "original_name": p["original_name"],
+                            "status": "error",
+                            "error": exc.detail,
+                            "elapsed_sec": 0,
+                        },
+                    )
                 except Exception as exc:
                     log.exception("[batch] pipeline failed for %s", p["original_name"])
-                    yield _sse("result", {
-                        "index":         i,
-                        "original_name": p["original_name"],
-                        "status":        "error",
-                        "error":         f"Pipeline failed: {exc}",
-                        "elapsed_sec":   0,
-                    })
+                    yield _sse(
+                        "result",
+                        {
+                            "index": i,
+                            "original_name": p["original_name"],
+                            "status": "error",
+                            "error": f"Pipeline failed: {exc}",
+                            "elapsed_sec": 0,
+                        },
+                    )
 
-            yield _sse("end", {
-                "total":             len(prepared),
-                "total_elapsed_sec": round(time.perf_counter() - t0, 2),
-            })
+            yield _sse(
+                "end",
+                {
+                    "total": len(prepared),
+                    "total_elapsed_sec": round(time.perf_counter() - t0, 2),
+                },
+            )
         finally:
             shutil.rmtree(work_root, ignore_errors=True)
 
@@ -485,8 +530,8 @@ async def ocr_batch(files: List[UploadFile] = File(...),
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control":     "no-cache",
-            "Connection":        "keep-alive",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )
@@ -494,12 +539,12 @@ async def ocr_batch(files: List[UploadFile] = File(...),
 
 # ── Bulk download ──────
 
+
 @app.post("/ocr/batch-zip")
-async def ocr_batch_zip(payload: dict = Body(...),
-                        identity: Identity = Depends(require_user)):
+async def ocr_batch_zip(payload: dict = Body(...), identity: Identity = Depends(require_user)):
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
-        raise HTTPException(400, "Body must be {\"ids\": [...]}")
+        raise HTTPException(400, 'Body must be {"ids": [...]}')
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -534,11 +579,17 @@ async def ocr_batch_zip(payload: dict = Body(...),
 
 # ── Document API ──────
 
+
 @app.get("/documents")
-async def list_documents(limit: int = 50, offset: int = 0, status: str | None = None,
-                          identity: Identity = Depends(require_user)):
-    rows = await storage.list_documents(limit=limit, offset=offset, status=status,
-                                        owner_id=identity.id)
+async def list_documents(
+    limit: int = 50,
+    offset: int = 0,
+    status: str | None = None,
+    identity: Identity = Depends(require_user),
+):
+    rows = await storage.list_documents(
+        limit=limit, offset=offset, status=status, owner_id=identity.id
+    )
     total = await storage.count_documents(owner_id=identity.id, status=status)
     return JSONResponse(
         content=_json.loads(_json.dumps(rows, default=str)),
@@ -567,8 +618,9 @@ async def get_document(doc_id: str, identity: Identity = Depends(require_user)):
 
 
 @app.patch("/documents/{doc_id}/access")
-async def set_document_access(doc_id: str, payload: dict = Body(...),
-                              identity: Identity = Depends(require_user)):
+async def set_document_access(
+    doc_id: str, payload: dict = Body(...), identity: Identity = Depends(require_user)
+):
     level = payload.get("access_level")
     if level not in ACCESS_LEVELS:
         raise HTTPException(400, f"access_level must be one of {sorted(ACCESS_LEVELS)}")
@@ -594,8 +646,7 @@ async def delete_document(doc_id: str, identity: Identity = Depends(require_user
 
 
 @app.delete("/internal/owner/{owner_id}/documents")
-async def delete_owner_documents(owner_id: str,
-                                  identity: Identity = Depends(require_user)):
+async def delete_owner_documents(owner_id: str, identity: Identity = Depends(require_user)):
     """Internal: called by auth_service when a user account is deleted, so the
     user's OCR history is wiped from DB + MinIO. Caller must be that same user
     or an admin (the caller already proved identity via X-User-Id headers
@@ -610,8 +661,9 @@ async def delete_owner_documents(owner_id: str,
 
 
 @app.get("/documents/{doc_id}/images/{filename}")
-async def get_document_image(doc_id: str, filename: str,
-                              identity: Identity = Depends(require_user)):
+async def get_document_image(
+    doc_id: str, filename: str, identity: Identity = Depends(require_user)
+):
     uid = _parse_uuid(doc_id)
     if "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(400, "Invalid filename")
@@ -631,8 +683,7 @@ async def get_document_image(doc_id: str, filename: str,
 
 
 @app.get("/documents/{doc_id}/{kind}")
-async def get_document_artifact(doc_id: str, kind: str,
-                                 identity: Identity = Depends(require_user)):
+async def get_document_artifact(doc_id: str, kind: str, identity: Identity = Depends(require_user)):
     if kind not in ARTIFACT_KINDS:
         raise HTTPException(400, f"Unknown kind: {kind}")
     uid = _parse_uuid(doc_id)
@@ -657,6 +708,7 @@ async def get_document_artifact(doc_id: str, kind: str,
 
 
 # ── DOCX → PDF preview ──────
+
 
 @app.get("/preview/{doc_id}")
 async def preview_docx(doc_id: str, identity: Identity = Depends(require_user)):
@@ -686,8 +738,7 @@ async def preview_docx(doc_id: str, identity: Identity = Depends(require_user)):
 
 
 @app.post("/preview-input")
-async def preview_input(file: UploadFile = File(...),
-                         identity: Identity = Depends(require_user)):
+async def preview_input(file: UploadFile = File(...), identity: Identity = Depends(require_user)):
     name = Path(file.filename or "upload").name
     ext = Path(name).suffix.lower()
     if ext not in PREVIEW_INPUT_EXTS:
@@ -705,4 +756,3 @@ async def preview_input(file: UploadFile = File(...),
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{Path(name).stem}.pdf"'},
     )
-

@@ -12,7 +12,9 @@ from datetime import date
 from prompts import registry
 from schemas import QueryPlan, Route, Turn
 
-UNDERSTANDING_SYSTEM = registry.register("rag/understanding", """\
+UNDERSTANDING_SYSTEM = registry.register(
+    "rag/understanding",
+    """\
 You analyse questions for a retrieval system over the user's own documents \
 (PDFs, scans, Word files), their Google Drive and the web.
 
@@ -37,9 +39,12 @@ date_to only when the user explicitly restricts them. Otherwise null.
 information from the user (e.g. "what about the other one?" with no context). \
 Then give a short clarifying_question in the user's language.
 
-Today is {{today}}.""")
+Today is {{today}}.""",
+)
 
-TRANSFORM_SYSTEM = registry.register("rag/transform", """\
+TRANSFORM_SYSTEM = registry.register(
+    "rag/transform",
+    """\
 You prepare search queries. Never search the raw question directly.
 - rewritten: a precise, keyword-rich search query for the question.
 - expansions: up to 3 alternative phrasings using synonyms, abbreviations \
@@ -50,9 +55,12 @@ self-contained questions that each retrieve one part. Otherwise empty.
 answer the question, written in the style of the source documents. It is \
 used only for semantic search, so plausible wording matters more than \
 correct facts.
-Write everything in the language of the question.""")
+Write everything in the language of the question.""",
+)
 
-ROUTE_SYSTEM = registry.register("rag/route", """\
+ROUTE_SYSTEM = registry.register(
+    "rag/route",
+    """\
 You decide where evidence for a question should come from. Available routes:
   docs    - the user's uploaded documents (vector + keyword search)
   catalog - metadata about the uploaded documents (counts, lists, dates, types)
@@ -61,7 +69,8 @@ You decide where evidence for a question should come from. Available routes:
   direct  - no retrieval needed (greetings, general knowledge, about the assistant)
 Choose one or more routes from the available list only. Prefer docs for \
 questions about the user's own material. Add web only when the answer is \
-likely public or time-sensitive. Explain the choice in one short sentence.""")
+likely public or time-sensitive. Explain the choice in one short sentence.""",
+)
 
 
 def _history_messages(history: list[Turn], limit: int = 6) -> list[dict]:
@@ -70,23 +79,27 @@ def _history_messages(history: list[Turn], limit: int = 6) -> list[dict]:
 
 def understanding_messages(question: str, history: list[Turn]) -> list[dict]:
     return registry.messages(
-        "rag/understanding", [*_history_messages(history), {"role": "user", "content": question}],
-        today=date.today().isoformat())
+        "rag/understanding",
+        [*_history_messages(history), {"role": "user", "content": question}],
+        today=date.today().isoformat(),
+    )
 
 
-def transform_messages(standalone_question: str, intent: str,
-                       entities: list[str]) -> list[dict]:
-    user = (f"Question: {standalone_question}\n"
-            f"Intent: {intent}\n"
-            f"Entities: {', '.join(entities) or '-'}")
+def transform_messages(standalone_question: str, intent: str, entities: list[str]) -> list[dict]:
+    user = (
+        f"Question: {standalone_question}\nIntent: {intent}\nEntities: {', '.join(entities) or '-'}"
+    )
     return registry.messages("rag/transform", [{"role": "user", "content": user}])
 
 
 def route_messages(plan: QueryPlan, available: list[Route]) -> list[dict]:
-    user = json.dumps({
-        "question": plan.standalone_question,
-        "intent": plan.intent,
-        "entities": plan.entities,
-        "available_routes": available,
-    }, ensure_ascii=False)
+    user = json.dumps(
+        {
+            "question": plan.standalone_question,
+            "intent": plan.intent,
+            "entities": plan.entities,
+            "available_routes": available,
+        },
+        ensure_ascii=False,
+    )
     return registry.messages("rag/route", [{"role": "user", "content": user}])

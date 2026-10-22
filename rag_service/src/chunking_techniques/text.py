@@ -27,7 +27,7 @@ def _pieces(text: str, max_chars: int) -> list[str]:
             continue
         for sent in _SENTENCE_RE.split(para):
             sent = sent.strip()
-            while len(sent) > max_chars:          # pathological run-on text
+            while len(sent) > max_chars:  # pathological run-on text
                 out.append(sent[:max_chars])
                 sent = sent[max_chars:]
             if sent:
@@ -35,8 +35,9 @@ def _pieces(text: str, max_chars: int) -> list[str]:
     return out
 
 
-def chunk_text(text: str, max_chars: int = TEXT_CHUNK_CHARS,
-               overlap: int = TEXT_CHUNK_OVERLAP) -> list[str]:
+def chunk_text(
+    text: str, max_chars: int = TEXT_CHUNK_CHARS, overlap: int = TEXT_CHUNK_OVERLAP
+) -> list[str]:
     chunks: list[str] = []
     current = ""
     for piece in _pieces(text, max_chars):
@@ -44,7 +45,7 @@ def chunk_text(text: str, max_chars: int = TEXT_CHUNK_CHARS,
             chunks.append(current)
             tail = current[-overlap:] if overlap else ""
             # Start the overlap at a word boundary.
-            tail = tail[tail.find(" ") + 1:] if " " in tail else tail
+            tail = tail[tail.find(" ") + 1 :] if " " in tail else tail
             current = f"{tail} {piece}".strip()
         else:
             current = f"{current}\n{piece}".strip() if current else piece

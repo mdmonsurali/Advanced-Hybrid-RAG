@@ -45,7 +45,7 @@ def preceding_paragraph(doc: DoclingDocument, target: NodeItem) -> str | None:
     for item in reversed(previous[-_MAX_LOOKBACK:]):
         label = getattr(item, "label", None)
         if label in _SECTION_LABELS or isinstance(item, (TableItem, PictureItem)):
-            return None                 # never borrow another section's / float's text
+            return None  # never borrow another section's / float's text
         if isinstance(item, TextItem) and label in _PARAGRAPH_LABELS and item.text.strip():
             text = item.text.strip()
             return text if len(text) <= _MAX_CONTEXT_CHARS else text[:_MAX_CONTEXT_CHARS] + "…"
@@ -121,10 +121,14 @@ def _page_of(row: int, row_pages: list[tuple[int, int]]) -> int:
     return next(page for first, page in reversed(row_pages) if first <= row)
 
 
-def table_chunks(doc: DoclingDocument, table: TableItem, heading_path: str,
-                 count_tokens: Callable[[str], int], max_tokens: int,
-                 row_pages: list[tuple[int, int]] | None = None,
-                 ) -> list[tuple[str, str, tuple[int, int] | None]]:
+def table_chunks(
+    doc: DoclingDocument,
+    table: TableItem,
+    heading_path: str,
+    count_tokens: Callable[[str], int],
+    max_tokens: int,
+    row_pages: list[tuple[int, int]] | None = None,
+) -> list[tuple[str, str, tuple[int, int] | None]]:
     """(text, embed_text, (first page, last page) or None) per row group of
     `table`. Pages come from `row_pages` (table_merge) for merged tables."""
     grid = table.data.grid
@@ -139,8 +143,9 @@ def table_chunks(doc: DoclingDocument, table: TableItem, heading_path: str,
     md_head = [_md_row(names), "| " + " | ".join("---" for _ in names) + " |"]
     embed_head = [l for l in (heading_path, caption) if l]
     if not rows:
-        return [("\n".join([*context, *md_head]),
-                 "\n".join([*embed_head, " | ".join(names)]), None)]
+        return [
+            ("\n".join([*context, *md_head]), "\n".join([*embed_head, " | ".join(names)]), None)
+        ]
 
     budget = max_tokens - count_tokens("\n".join(embed_head))
     groups: list[list[tuple[int, str, str]]] = [[]]
@@ -158,7 +163,11 @@ def table_chunks(doc: DoclingDocument, table: TableItem, heading_path: str,
         pages = None
         if row_pages:
             pages = (_page_of(group[0][0], row_pages), _page_of(group[-1][0], row_pages))
-        out.append(("\n".join([*context, *md_head, *(md for _, _, md in group)]),
-                    "\n".join([*embed_head, *(kv for _, kv, _ in group)]),
-                    pages))
+        out.append(
+            (
+                "\n".join([*context, *md_head, *(md for _, _, md in group)]),
+                "\n".join([*embed_head, *(kv for _, kv, _ in group)]),
+                pages,
+            )
+        )
     return out

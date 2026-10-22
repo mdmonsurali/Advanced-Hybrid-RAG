@@ -16,8 +16,9 @@ LLM_API_TIMEOUT = float(os.getenv("LLM_API_TIMEOUT", "120"))
 
 async def _post(path: str, payload: dict) -> dict:
     async with httpx.AsyncClient(timeout=LLM_API_TIMEOUT) as client:
-        resp = await client.post(f"{LLM_SERVICE_URL}{path}", json=payload,
-                                 headers=tracing.outgoing_headers())
+        resp = await client.post(
+            f"{LLM_SERVICE_URL}{path}", json=payload, headers=tracing.outgoing_headers()
+        )
     resp.raise_for_status()
     return resp.json()
 
@@ -27,8 +28,10 @@ async def doc_metadata(name: str, text: str) -> dict:
 
 
 async def describe_figure(image_b64: str, mime: str, caption: str, context: str) -> dict:
-    return await _post("/tasks/describe-figure", {"image_b64": image_b64, "mime": mime,
-                                                  "caption": caption, "context": context})
+    return await _post(
+        "/tasks/describe-figure",
+        {"image_b64": image_b64, "mime": mime, "caption": caption, "context": context},
+    )
 
 
 async def route(plan: dict, available: list[str]) -> dict:

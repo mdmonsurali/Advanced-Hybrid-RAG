@@ -12,8 +12,13 @@ import re
 
 import chainlit as cl
 
-_ROUTE_LABEL = {"docs": "Document", "gdrive": "Google Drive", "web": "Web",
-                "catalog": "Document catalog", "mcp": "MCP tool"}
+_ROUTE_LABEL = {
+    "docs": "Document",
+    "gdrive": "Google Drive",
+    "web": "Web",
+    "catalog": "Document catalog",
+    "mcp": "MCP tool",
+}
 _SAFE_LINK = re.compile(r"^(https?://|/(?!/))", re.IGNORECASE)
 
 

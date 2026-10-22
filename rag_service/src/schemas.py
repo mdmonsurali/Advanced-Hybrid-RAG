@@ -10,8 +10,9 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-Intent = Literal["fact", "comparison", "troubleshooting", "policy",
-                 "summary", "catalog", "chitchat"]
+Intent = Literal[
+    "fact", "comparison", "troubleshooting", "policy", "summary", "catalog", "chitchat"
+]
 Route = Literal["docs", "catalog", "gdrive", "web", "mcp", "direct"]
 RouteStatus = Literal["ok", "empty", "unavailable", "skipped"]
 
@@ -53,7 +54,7 @@ class Evidence(BaseModel):
 
 class RouteRequest(BaseModel):
     plan: QueryPlan
-    route_hint: list[Route] = Field(default_factory=list)   # user forced routes (/web, /drive, ...)
+    route_hint: list[Route] = Field(default_factory=list)  # user forced routes (/web, /drive, ...)
     deny_routes: list[Route] = Field(default_factory=list)  # routes the user switched off
 
 
@@ -70,7 +71,7 @@ class RetrieveRequest(BaseModel):
     broaden: bool = False
     # Results of user-connected MCP tools (run by the UI), reranked with the rest.
     external_evidence: list[Evidence] = Field(default_factory=list)
-    debug: bool = False   # admins only: also return the pre-rerank candidates
+    debug: bool = False  # admins only: also return the pre-rerank candidates
 
 
 class RetrieveStats(BaseModel):
@@ -83,7 +84,7 @@ class RetrieveResponse(BaseModel):
     evidence: list[Evidence]
     route_status: dict[str, RouteStatus]
     stats: RetrieveStats
-    candidates: list[Evidence] = Field(default_factory=list)   # first-stage hits (debug only)
+    candidates: list[Evidence] = Field(default_factory=list)  # first-stage hits (debug only)
 
 
 class AccessUpdate(BaseModel):

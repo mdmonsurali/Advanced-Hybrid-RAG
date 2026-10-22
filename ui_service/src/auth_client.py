@@ -1,5 +1,6 @@
 """Thin httpx wrapper around auth_service, with a tiny in-process cache
 on /auth/validate so we don't hit auth_service for every static asset."""
+
 from __future__ import annotations
 
 import logging
@@ -140,6 +141,7 @@ async def change_password(session_id: str, current: str, new: str) -> tuple[int,
 
 # ── Admin proxies ────────────────────────────────────────────────────────
 
+
 async def admin_list_users(session_id: str) -> tuple[int, list]:
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
@@ -153,8 +155,9 @@ async def admin_list_users(session_id: str) -> tuple[int, list]:
     return resp.status_code, body
 
 
-async def admin_create_user(session_id: str, username: str, password: str,
-                            role: str) -> tuple[int, dict]:
+async def admin_create_user(
+    session_id: str, username: str, password: str, role: str
+) -> tuple[int, dict]:
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
             f"{AUTH_SERVICE_URL}/auth/admin/users",
@@ -168,8 +171,7 @@ async def admin_create_user(session_id: str, username: str, password: str,
     return resp.status_code, body
 
 
-async def admin_update_user(session_id: str, user_id: str,
-                            payload: dict) -> tuple[int, dict]:
+async def admin_update_user(session_id: str, user_id: str, payload: dict) -> tuple[int, dict]:
     _drop_target_sessions_cache()
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.patch(

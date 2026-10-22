@@ -12,6 +12,7 @@ Routes (all under /auth):
     PATCH  /auth/admin/users/{id}          (admin)
     DELETE /auth/admin/users/{id}          (admin)
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,8 +45,7 @@ from security import (
 OCR_SERVICE_URL = os.environ.get("OCR_SERVICE_URL", "http://ocr_service:8001")
 
 log = logging.getLogger("auth_service")
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
@@ -89,11 +89,14 @@ async def _wipe_owner_documents(owner_id: _uuid.UUID, role: str) -> None:
                 headers=headers,
             )
         if resp.status_code != 200:
-            log.warning("ocr_service document wipe for %s returned %d: %s",
-                        owner_id, resp.status_code, resp.text[:200])
+            log.warning(
+                "ocr_service document wipe for %s returned %d: %s",
+                owner_id,
+                resp.status_code,
+                resp.text[:200],
+            )
         else:
-            log.info("ocr_service wiped %s documents for %s",
-                     resp.json().get("deleted"), owner_id)
+            log.info("ocr_service wiped %s documents for %s", resp.json().get("deleted"), owner_id)
     except httpx.HTTPError as e:
         log.warning("ocr_service document wipe for %s failed: %s", owner_id, e)
 
@@ -111,6 +114,7 @@ def _user_out(row: dict) -> dict:
 
 
 # ── Public ───────────────────────────────────────────────────────────────
+
 
 @app.get("/auth/health")
 async def health():
@@ -202,8 +206,7 @@ async def change_password(body: ChangePasswordRequest, session=Depends(current_s
     if not verify_password(body.current_password, user["password_hash"]):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password incorrect")
     if body.current_password == body.new_password:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            "New password must differ from current")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "New password must differ from current")
     await db.update_user(
         user["id"],
         password_hash=hash_password(body.new_password),
@@ -225,22 +228,21 @@ async def change_password(body: ChangePasswordRequest, session=Depends(current_s
 #             cannot self-promote.
 #   user    — regular account.
 
-_USER_ONLY     = {"user"}
+_USER_ONLY = {"user"}
 _USER_OR_ADMIN = {"user", "admin"}
 
 
 def _visible_roles_for(caller_role: str) -> set[str]:
     """Which target roles can the caller see / act on?"""
     if caller_role == "master":
-        return _USER_OR_ADMIN     # master sees users + admins
+        return _USER_OR_ADMIN  # master sees users + admins
     if caller_role == "admin":
-        return _USER_ONLY         # admin sees only users
+        return _USER_ONLY  # admin sees only users
     return set()
 
 
 @app.post("/auth/admin/users", response_model=UserOut, status_code=201)
-async def admin_create_user(body: CreateUserRequest,
-                            session=Depends(require_admin)):
+async def admin_create_user(body: CreateUserRequest, session=Depends(require_admin)):
     # Only master may mint new admins. Admins can mint users only.
     if body.role == "admin" and session["role"] != "master":
         raise HTTPException(403, "Only the master can create admin accounts")
@@ -271,8 +273,7 @@ def _parse_uuid(raw: str) -> _uuid.UUID:
 
 
 @app.patch("/auth/admin/users/{user_id}", response_model=UserOut)
-async def admin_update_user(user_id: str, body: UpdateUserRequest,
-                            session=Depends(require_admin)):
+async def admin_update_user(user_id: str, body: UpdateUserRequest, session=Depends(require_admin)):
     uid = _parse_uuid(user_id)
     target = await db.get_user_by_id(uid)
     if not target or target["role"] not in _visible_roles_for(session["role"]):

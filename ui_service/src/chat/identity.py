@@ -33,8 +33,11 @@ def session_cookie_from(cookie_header: str) -> Optional[str]:
 def to_chainlit_user(user: auth_client.CurrentUser) -> cl.User:
     # identifier = auth user id (stable across renames); the username is
     # only the display name.
-    return cl.User(identifier=user.id, display_name=user.username,
-                   metadata={"id": user.id, "role": user.role, "username": user.username})
+    return cl.User(
+        identifier=user.id,
+        display_name=user.username,
+        metadata={"id": user.id, "role": user.role, "username": user.username},
+    )
 
 
 async def current_user() -> auth_client.CurrentUser:

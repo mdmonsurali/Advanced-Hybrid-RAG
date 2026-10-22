@@ -1,4 +1,5 @@
 """Password hashing + cookie/session constants."""
+
 from __future__ import annotations
 
 import os

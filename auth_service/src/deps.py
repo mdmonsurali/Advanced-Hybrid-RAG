@@ -1,4 +1,5 @@
 """FastAPI dependencies for session + role checks."""
+
 from __future__ import annotations
 
 import uuid as _uuid

@@ -17,10 +17,14 @@ SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--secrets", default="secrets/gdrive",
-                        help="directory holding credentials.json (token.json is written here)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--secrets",
+        default="secrets/gdrive",
+        help="directory holding credentials.json (token.json is written here)",
+    )
     args = parser.parse_args()
 
     from google_auth_oauthlib.flow import InstalledAppFlow

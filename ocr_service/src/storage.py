@@ -63,6 +63,7 @@ _meta_lock = asyncio.Lock()
 
 # ── Lifecycle ────
 
+
 def init_minio() -> None:
     global minio, _upload_sem
     minio = Minio(
@@ -90,6 +91,7 @@ def _decode_meta(raw: bytes) -> dict:
 
 async def load_index() -> None:
     """Read every documents/*/meta.json into the in-memory index."""
+
     def _load() -> list[dict]:
         assert minio is not None
         metas = []
@@ -109,6 +111,7 @@ async def load_index() -> None:
 
 # ── Health probes ────
 
+
 def health_minio() -> None:
     if minio is None:
         raise RuntimeError("minio client not initialised")
@@ -119,20 +122,20 @@ def health_minio() -> None:
 # ── Helpers ───
 
 ARTIFACT_KEY = {
-    "md":   "output.md",
+    "md": "output.md",
     "json": "layout.json",
     "docx": "output.docx",
 }
 ARTIFACT_CONTENT_TYPE = {
-    "md":   "text/markdown",
+    "md": "text/markdown",
     "json": "application/json",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 SOURCE_CONTENT_TYPE = {
-    ".pdf":  "application/pdf",
+    ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".png":  "image/png",
-    ".jpg":  "image/jpeg",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
 }
 
@@ -172,6 +175,7 @@ def _get_object_bytes(name: str) -> bytes:
 
 class _BytesReader:
     """Minimal file-like wrapper for bytes that the minio SDK accepts."""
+
     __slots__ = ("_b", "_pos")
 
     def __init__(self, b: bytes):
@@ -180,15 +184,16 @@ class _BytesReader:
 
     def read(self, n: int = -1) -> bytes:
         if n < 0 or self._pos + n > len(self._b):
-            chunk = self._b[self._pos:]
+            chunk = self._b[self._pos :]
             self._pos = len(self._b)
             return chunk
-        chunk = self._b[self._pos:self._pos + n]
+        chunk = self._b[self._pos : self._pos + n]
         self._pos += n
         return chunk
 
 
 # ── CRUD ─────────
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -203,8 +208,9 @@ async def _write_meta(meta: dict) -> None:
     await _put_object(_meta_object_name(meta["id"]), body, "application/json")
 
 
-async def insert_document(original_name: str, ext: str, source_bytes: bytes,
-                          owner_id: _uuid.UUID) -> _uuid.UUID:
+async def insert_document(
+    original_name: str, ext: str, source_bytes: bytes, owner_id: _uuid.UUID
+) -> _uuid.UUID:
     """Create a 'queued' document and upload its source bytes to MinIO.
 
     Returns the new document UUID. Caller drives state transitions via
@@ -219,12 +225,21 @@ async def insert_document(original_name: str, ext: str, source_bytes: bytes,
     )
     now = _now()
     meta = {
-        "id": doc_id, "original_name": original_name, "status": "queued",
-        "scan_type": None, "page_count": None, "source_key": source_key,
-        "markdown_key": None, "json_key": None, "docx_key": None,
-        "elapsed_sec": None, "error": None, "owner_id": owner_id,
+        "id": doc_id,
+        "original_name": original_name,
+        "status": "queued",
+        "scan_type": None,
+        "page_count": None,
+        "source_key": source_key,
+        "markdown_key": None,
+        "json_key": None,
+        "docx_key": None,
+        "elapsed_sec": None,
+        "error": None,
+        "owner_id": owner_id,
         "access_level": "private",
-        "created_at": now, "updated_at": now,
+        "created_at": now,
+        "updated_at": now,
     }
     async with _meta_lock:
         _index[doc_id] = meta
@@ -233,8 +248,15 @@ async def insert_document(original_name: str, ext: str, source_bytes: bytes,
 
 
 _ALLOWED_UPDATE_COLS = {
-    "status", "scan_type", "page_count", "markdown_key", "json_key",
-    "docx_key", "elapsed_sec", "error", "access_level",
+    "status",
+    "scan_type",
+    "page_count",
+    "markdown_key",
+    "json_key",
+    "docx_key",
+    "elapsed_sec",
+    "error",
+    "access_level",
 }
 
 
@@ -289,13 +311,17 @@ async def fetch_document(doc_id: _uuid.UUID) -> Optional[dict]:
 
 
 def _filtered(owner_id: Optional[_uuid.UUID], status: Optional[str]) -> list[dict]:
-    return [m for m in _index.values()
-            if (owner_id is None or m.get("owner_id") == owner_id)
-            and (not status or m.get("status") == status)]
+    return [
+        m
+        for m in _index.values()
+        if (owner_id is None or m.get("owner_id") == owner_id)
+        and (not status or m.get("status") == status)
+    ]
 
 
-async def count_documents(owner_id: Optional[_uuid.UUID] = None,
-                          status: Optional[str] = None) -> int:
+async def count_documents(
+    owner_id: Optional[_uuid.UUID] = None, status: Optional[str] = None
+) -> int:
     """Total documents matching the same filters list_documents uses."""
     return len(_filtered(owner_id, status))
 
@@ -304,8 +330,10 @@ def _delete_minio_prefix(prefix: str) -> int:
     """Synchronous MinIO recursive prefix delete. Returns object count removed.
     Called inside asyncio.to_thread by the async wrappers below."""
     assert minio is not None
-    keys = [DeleteObject(obj.object_name) for obj in
-            minio.list_objects(MINIO_BUCKET, prefix=prefix, recursive=True)]
+    keys = [
+        DeleteObject(obj.object_name)
+        for obj in minio.list_objects(MINIO_BUCKET, prefix=prefix, recursive=True)
+    ]
     if not keys:
         return 0
     errors = list(minio.remove_objects(MINIO_BUCKET, keys))
@@ -347,16 +375,29 @@ async def delete_all_documents_for_owner(owner_id: _uuid.UUID) -> list[_uuid.UUI
     return ids
 
 
-_LIST_FIELDS = ("id", "original_name", "status", "scan_type", "page_count",
-                "elapsed_sec", "error", "created_at", "updated_at", "owner_id",
-                "access_level")
+_LIST_FIELDS = (
+    "id",
+    "original_name",
+    "status",
+    "scan_type",
+    "page_count",
+    "elapsed_sec",
+    "error",
+    "created_at",
+    "updated_at",
+    "owner_id",
+    "access_level",
+)
 
 
-async def list_documents(limit: int = 50, offset: int = 0,
-                         status: Optional[str] = None,
-                         owner_id: Optional[_uuid.UUID] = None) -> list[dict]:
+async def list_documents(
+    limit: int = 50,
+    offset: int = 0,
+    status: Optional[str] = None,
+    owner_id: Optional[_uuid.UUID] = None,
+) -> list[dict]:
     rows = sorted(_filtered(owner_id, status), key=lambda m: m["created_at"], reverse=True)
-    out = [{k: m.get(k) for k in _LIST_FIELDS} for m in rows[offset:offset + limit]]
+    out = [{k: m.get(k) for k in _LIST_FIELDS} for m in rows[offset : offset + limit]]
     for row in out:
         row["access_level"] = row["access_level"] or "private"
     return out

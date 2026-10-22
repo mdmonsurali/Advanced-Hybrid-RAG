@@ -28,8 +28,9 @@ RERANK_MIN_SCORE = float(os.getenv("RAG_RERANK_MIN_SCORE", "0.15"))
 RERANK_MAX_CANDIDATES = int(os.getenv("RAG_RERANK_MAX_CANDIDATES", "40"))
 
 
-async def rerank(candidates: list[tuple[Evidence, str]],
-                 top_k: int = RERANK_TOP_K) -> list[Evidence]:
+async def rerank(
+    candidates: list[tuple[Evidence, str]], top_k: int = RERANK_TOP_K
+) -> list[Evidence]:
     if not candidates:
         return []
     # Cap the CPU cost: keep the best first-stage candidates per query.
@@ -44,8 +45,11 @@ async def rerank(candidates: list[tuple[Evidence, str]],
         scores = await asyncio.to_thread(reranker.score, q, [e.text for e in evs])
         return [(e.model_copy(update={"score": s}), q) for e, s in zip(evs, scores)]
 
-    scored = [pair for group in await asyncio.gather(
-        *(_score(q, evs) for q, evs in by_query.items())) for pair in group]
+    scored = [
+        pair
+        for group in await asyncio.gather(*(_score(q, evs) for q, evs in by_query.items()))
+        for pair in group
+    ]
 
     # Same chunk retrieved for several queries: keep its best score.
     best: dict[str, tuple[Evidence, str]] = {}
@@ -64,6 +68,10 @@ async def rerank(candidates: list[tuple[Evidence, str]],
             kept.append(top[0])
             kept_ids.add(top[0].id)
 
-    log.info("[rerank] %d candidates -> %d kept (top=%.3f)", len(best), len(kept),
-             ranked[0][0].score if ranked else 0.0)
+    log.info(
+        "[rerank] %d candidates -> %d kept (top=%.3f)",
+        len(best),
+        len(kept),
+        ranked[0][0].score if ranked else 0.0,
+    )
     return sorted(kept, key=lambda e: e.score, reverse=True)

@@ -24,8 +24,11 @@ from typing import Any, Iterator, Mapping
 
 log = logging.getLogger("orchestrator.tracing")
 
-ENABLED = (os.getenv("LANGFUSE_TRACING_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-           and bool(os.getenv("LANGFUSE_PUBLIC_KEY")) and bool(os.getenv("LANGFUSE_SECRET_KEY")))
+ENABLED = (
+    os.getenv("LANGFUSE_TRACING_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    and bool(os.getenv("LANGFUSE_PUBLIC_KEY"))
+    and bool(os.getenv("LANGFUSE_SECRET_KEY"))
+)
 if not ENABLED:
     os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
@@ -52,7 +55,11 @@ def compact(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
     if isinstance(value, str):
-        return value if len(value) <= MAX_TEXT else value[:MAX_TEXT] + f"… (+{len(value) - MAX_TEXT} chars)"
+        return (
+            value
+            if len(value) <= MAX_TEXT
+            else value[:MAX_TEXT] + f"… (+{len(value) - MAX_TEXT} chars)"
+        )
     if isinstance(value, Mapping):
         return {k: compact(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -84,20 +91,30 @@ def current_trace_id() -> str | None:
 
 
 @contextmanager
-def trace_question(question: str, user_id: str, role: str, session_id: str | None,
-                   options: dict) -> Iterator[Any]:
+def trace_question(
+    question: str, user_id: str, role: str, session_id: str | None, options: dict
+) -> Iterator[Any]:
     """Root observation of one chat question, with user and session set on
     every observation below it."""
-    with langfuse.start_as_current_observation(
-        name="rag-chat", as_type="chain", trace_context=new_trace(),
-        input={"question": question,
-               "route_hint": options.get("route_hint") or [],
-               "deny_routes": options.get("deny_routes") or [],
-               "answer_style": options.get("answer_style"),
-               "external_evidence": len(options.get("external_evidence") or [])},
-    ) as root, propagate_attributes(
-        trace_name="rag-chat", user_id=user_id, session_id=session_id,
-        tags=["chat", f"role:{role}"],
+    with (
+        langfuse.start_as_current_observation(
+            name="rag-chat",
+            as_type="chain",
+            trace_context=new_trace(),
+            input={
+                "question": question,
+                "route_hint": options.get("route_hint") or [],
+                "deny_routes": options.get("deny_routes") or [],
+                "answer_style": options.get("answer_style"),
+                "external_evidence": len(options.get("external_evidence") or []),
+            },
+        ) as root,
+        propagate_attributes(
+            trace_name="rag-chat",
+            user_id=user_id,
+            session_id=session_id,
+            tags=["chat", f"role:{role}"],
+        ),
     ):
         try:
             yield root
@@ -122,8 +139,13 @@ def score_answer(trace_id: str | None, answer: dict) -> None:
         scores.append(("answer_confidence", float(answer.get("confidence") or 0.0), "NUMERIC"))
     for name, value, data_type in scores:
         try:
-            langfuse.create_score(trace_id=trace_id, name=name, value=value, data_type=data_type,
-                                  comment=verdict.get("reason") if name == "outcome" else None)
+            langfuse.create_score(
+                trace_id=trace_id,
+                name=name,
+                value=value,
+                data_type=data_type,
+                comment=verdict.get("reason") if name == "outcome" else None,
+            )
         except Exception as e:  # scores are best-effort
             log.warning("[tracing] score %s not sent: %s", name, e)
 

@@ -47,20 +47,24 @@ _child_converter = None
 
 def _child_init() -> None:
     global _child_converter
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s[gpu-worker]: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s[gpu-worker]: %(message)s"
+    )
     import docling_engine
+
     _child_converter = docling_engine.build_converter(device="cuda")
     logging.getLogger("ocr_service.gpu").info("[gpu-worker] Docling models loaded on CUDA")
 
 
 def _child_ping() -> str:
     import torch
+
     return torch.cuda.get_device_name(0)
 
 
 def _child_convert(path: str) -> dict:
     import docling_engine
+
     return docling_engine.convert_with(_child_converter, Path(path)).export_to_dict()
 
 
@@ -79,13 +83,19 @@ async def enable() -> dict:
     global _pool
     async with _lock:
         if _pool is None:
-            pool = ProcessPoolExecutor(max_workers=max(1, OCR_GPU_WORKERS),
-                                       mp_context=mp.get_context("spawn"),
-                                       initializer=_child_init)
+            pool = ProcessPoolExecutor(
+                max_workers=max(1, OCR_GPU_WORKERS),
+                mp_context=mp.get_context("spawn"),
+                initializer=_child_init,
+            )
             loop = asyncio.get_running_loop()
             try:
-                names = await asyncio.gather(*(loop.run_in_executor(pool, _child_ping)
-                                               for _ in range(max(1, OCR_GPU_WORKERS))))
+                names = await asyncio.gather(
+                    *(
+                        loop.run_in_executor(pool, _child_ping)
+                        for _ in range(max(1, OCR_GPU_WORKERS))
+                    )
+                )
             except Exception:
                 await asyncio.to_thread(pool.shutdown, True, cancel_futures=True)
                 raise
@@ -122,9 +132,12 @@ async def convert(path: Path) -> DoclingDocument:
 async def ocr_lease() -> AsyncIterator[str]:
     """Hold an `ocr` GPU lease from the orchestrator while the body runs."""
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(GPU_ACQUIRE_TIMEOUT, connect=10)) as client:
-            resp = await client.post(f"{ORCHESTRATOR_SERVICE_URL}/gpu/acquire/ocr",
-                                     params={"ttl": GPU_LEASE_TTL})
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(GPU_ACQUIRE_TIMEOUT, connect=10)
+        ) as client:
+            resp = await client.post(
+                f"{ORCHESTRATOR_SERVICE_URL}/gpu/acquire/ocr", params={"ttl": GPU_LEASE_TTL}
+            )
         resp.raise_for_status()
         lease_id = resp.json()["lease_id"]
     except (httpx.HTTPError, KeyError, ValueError) as e:
@@ -135,8 +148,10 @@ async def ocr_lease() -> AsyncIterator[str]:
             while True:
                 await asyncio.sleep(GPU_LEASE_TTL / 3)
                 try:
-                    await client.post(f"{ORCHESTRATOR_SERVICE_URL}/gpu/renew/{lease_id}",
-                                      params={"ttl": GPU_LEASE_TTL})
+                    await client.post(
+                        f"{ORCHESTRATOR_SERVICE_URL}/gpu/renew/{lease_id}",
+                        params={"ttl": GPU_LEASE_TTL},
+                    )
                 except httpx.HTTPError as e:
                     log.warning("[gpu] lease renew failed: %s", e)
 

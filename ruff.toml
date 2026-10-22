@@ -1,0 +1,3 @@
+# Ruff settings shared by every service (lint + formatter).
+line-length = 100
+target-version = "py311"

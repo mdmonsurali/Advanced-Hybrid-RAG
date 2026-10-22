@@ -36,7 +36,7 @@ def _shingles(text: str, n: int = 3) -> set[tuple[str, ...]]:
     words = _WORD_RE.findall(text.lower())
     if len(words) < n:
         return {tuple(words)} if words else set()
-    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
 
 
 def _jaccard(a: set, b: set) -> float:
@@ -56,7 +56,7 @@ def _drop_weak(evidence: list[Evidence]) -> list[Evidence]:
 
 def _dedupe(evidence: list[Evidence]) -> list[Evidence]:
     kept: list[tuple[Evidence, set]] = []
-    for ev in evidence:                       # already score-sorted
+    for ev in evidence:  # already score-sorted
         sh = _shingles(ev.text)
         if any(_jaccard(sh, other) >= DUP_JACCARD for _, other in kept):
             continue
@@ -83,14 +83,22 @@ def _merge_adjacent(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
     out: list[Evidence] = []
     ordered = sorted(
         evidence,
-        key=lambda e: (e.doc_id or e.id, e.page or 0,
-                       e.chunk_index if e.chunk_index is not None else 10**9),
+        key=lambda e: (
+            e.doc_id or e.id,
+            e.page or 0,
+            e.chunk_index if e.chunk_index is not None else 10**9,
+        ),
     )
     for ev in ordered:
         key = (ev.doc_id, ev.page)
         prev = by_key.get(key)
-        if (ev.doc_id and prev is not None and prev.chunk_index is not None
-                and ev.chunk_index is not None and ev.chunk_index == prev.chunk_index + 1):
+        if (
+            ev.doc_id
+            and prev is not None
+            and prev.chunk_index is not None
+            and ev.chunk_index is not None
+            and ev.chunk_index == prev.chunk_index + 1
+        ):
             prev.text = f"{prev.text.rstrip()}\n{_drop_repeated_head(prev.text, ev.text)}"
             prev.score = max(prev.score, ev.score)
             prev.chunk_index = ev.chunk_index
@@ -105,8 +113,7 @@ def _merge_adjacent(evidence: list[Evidence]) -> tuple[list[Evidence], int]:
 
 async def _extract(question: str, ev: Evidence) -> Evidence | None:
     try:
-        res = await chat_json(extract_messages(question, ev.text), ExtractOutput,
-                              max_tokens=512)
+        res = await chat_json(extract_messages(question, ev.text), ExtractOutput, max_tokens=512)
     except Exception as e:
         log.warning("[compress] extraction failed for %s: %s", ev.id, e)
         return None
@@ -123,7 +130,9 @@ async def compress(plan: QueryPlan, evidence: list[Evidence]) -> CompressRespons
     ranked, merged = _merge_adjacent(ranked)
     dropped = before - len(ranked) - merged
 
-    system_tokens = count_tokens(registry.text("rag/answer", language=plan.language)) + count_tokens(plan.standalone_question)
+    system_tokens = count_tokens(
+        registry.text("rag/answer", language=plan.language)
+    ) + count_tokens(plan.standalone_question)
     budget = LLM_CONTEXT_LEN - ANSWER_TOKENS - PROMPT_OVERHEAD_TOKENS - system_tokens
 
     # First pass: keep everything that fits; queue long chunks that don't.
@@ -131,7 +140,7 @@ async def compress(plan: QueryPlan, evidence: list[Evidence]) -> CompressRespons
     used = 0
     overflow: list[Evidence] = []
     for ev in ranked:
-        n = count_tokens(ev.text) + 24          # header line per block
+        n = count_tokens(ev.text) + 24  # header line per block
         if used + n <= budget:
             kept.append(ev)
             used += n
@@ -143,8 +152,7 @@ async def compress(plan: QueryPlan, evidence: list[Evidence]) -> CompressRespons
     # Second pass: extractive compression of the long overflow chunks.
     extracted = 0
     if overflow:
-        results = await asyncio.gather(*(_extract(plan.standalone_question, ev)
-                                         for ev in overflow))
+        results = await asyncio.gather(*(_extract(plan.standalone_question, ev) for ev in overflow))
         for res in results:
             if res is None:
                 dropped += 1
@@ -158,7 +166,15 @@ async def compress(plan: QueryPlan, evidence: list[Evidence]) -> CompressRespons
                 dropped += 1
 
     kept.sort(key=lambda e: e.score, reverse=True)
-    log.info("[compress] %d -> %d evidence (dropped=%d merged=%d extracted=%d, %d tokens)",
-             before, len(kept), dropped, merged, extracted, used)
-    return CompressResponse(evidence=kept, dropped=max(0, dropped), merged=merged,
-                            extracted=extracted, tokens=used)
+    log.info(
+        "[compress] %d -> %d evidence (dropped=%d merged=%d extracted=%d, %d tokens)",
+        before,
+        len(kept),
+        dropped,
+        merged,
+        extracted,
+        used,
+    )
+    return CompressResponse(
+        evidence=kept, dropped=max(0, dropped), merged=merged, extracted=extracted, tokens=used
+    )

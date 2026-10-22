@@ -27,6 +27,7 @@ def load() -> None:
     global _model
     if _model is None:
         from fastembed import SparseTextEmbedding
+
         _model = SparseTextEmbedding(BM25_MODEL, language=BM25_LANGUAGE)
         log.info("sparse model ready: %s (%s)", BM25_MODEL, BM25_LANGUAGE)
 

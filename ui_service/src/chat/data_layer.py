@@ -28,7 +28,14 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from chainlit.data.base import BaseDataLayer
-from chainlit.types import Feedback, PageInfo, PaginatedResponse, Pagination, ThreadDict, ThreadFilter
+from chainlit.types import (
+    Feedback,
+    PageInfo,
+    PaginatedResponse,
+    Pagination,
+    ThreadDict,
+    ThreadFilter,
+)
 from chainlit.user import PersistedUser, User
 from minio import Minio
 from minio.deleteobjects import DeleteObject
@@ -63,21 +70,25 @@ class _Bytes:
 
     def read(self, n: int = -1) -> bytes:
         if n < 0 or self._pos + n > len(self._b):
-            chunk, self._pos = self._b[self._pos:], len(self._b)
+            chunk, self._pos = self._b[self._pos :], len(self._b)
             return chunk
-        chunk = self._b[self._pos:self._pos + n]
+        chunk = self._b[self._pos : self._pos + n]
         self._pos += n
         return chunk
 
 
 class MinioDataLayer(BaseDataLayer):
     def __init__(self, client: Optional[Minio] = None):
-        self.client = client or Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY,
-                                      secret_key=MINIO_SECRET_KEY, secure=MINIO_SECURE,
-                                      region=MINIO_REGION)
+        self.client = client or Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=MINIO_SECURE,
+            region=MINIO_REGION,
+        )
         self._threads: "OrderedDict[str, dict]" = OrderedDict()
-        self._step_thread: Dict[str, str] = {}        # step id -> thread id
-        self._feedback_step: Dict[str, str] = {}      # feedback id -> step id
+        self._step_thread: Dict[str, str] = {}  # step id -> thread id
+        self._feedback_step: Dict[str, str] = {}  # feedback id -> step id
         self._locks: Dict[str, asyncio.Lock] = {}
 
     # ── MinIO helpers ───────────────────────────────────────────────────
@@ -96,12 +107,15 @@ class MinioDataLayer(BaseDataLayer):
             resp.release_conn()
 
     def _put(self, key: str, body: bytes, content_type: str = "application/json") -> None:
-        self.client.put_object(MINIO_BUCKET, key, data=_Bytes(body), length=len(body),
-                               content_type=content_type)
+        self.client.put_object(
+            MINIO_BUCKET, key, data=_Bytes(body), length=len(body), content_type=content_type
+        )
 
     def _remove_prefix(self, prefix: str) -> None:
-        keys = [DeleteObject(o.object_name) for o in
-                self.client.list_objects(MINIO_BUCKET, prefix=prefix, recursive=True)]
+        keys = [
+            DeleteObject(o.object_name)
+            for o in self.client.list_objects(MINIO_BUCKET, prefix=prefix, recursive=True)
+        ]
         for err in self.client.remove_objects(MINIO_BUCKET, keys):
             log.warning("minio delete error: %s", err)
 
@@ -143,9 +157,18 @@ class MinioDataLayer(BaseDataLayer):
     async def _load_or_new(self, thread_id: str) -> dict:
         thread = await self._load(thread_id)
         if thread is None:
-            thread = {"id": thread_id, "createdAt": _now(), "updatedAt": _now(), "name": None,
-                      "userId": None, "userIdentifier": None, "tags": [], "metadata": {},
-                      "steps": [], "elements": []}
+            thread = {
+                "id": thread_id,
+                "createdAt": _now(),
+                "updatedAt": _now(),
+                "name": None,
+                "userId": None,
+                "userIdentifier": None,
+                "tags": [],
+                "metadata": {},
+                "steps": [],
+                "elements": [],
+            }
             self._remember(thread)
         return thread
 
@@ -165,11 +188,19 @@ class MinioDataLayer(BaseDataLayer):
             index = await self._get_json(f"chat/index/{user_id}.json") or []
             index = [t for t in index if t["id"] != thread["id"]]
             if not remove:
-                feedback = sorted({s["feedback"]["value"] for s in thread.get("steps", [])
-                                   if s.get("feedback")})
-                index.append({"id": thread["id"], "name": thread.get("name"),
-                              "createdAt": thread["createdAt"], "updatedAt": thread["updatedAt"],
-                              "tags": thread.get("tags") or [], "feedback": feedback})
+                feedback = sorted(
+                    {s["feedback"]["value"] for s in thread.get("steps", []) if s.get("feedback")}
+                )
+                index.append(
+                    {
+                        "id": thread["id"],
+                        "name": thread.get("name"),
+                        "createdAt": thread["createdAt"],
+                        "updatedAt": thread["updatedAt"],
+                        "tags": thread.get("tags") or [],
+                        "feedback": feedback,
+                    }
+                )
             await self._put_json(f"chat/index/{user_id}.json", index)
 
     # ── Users ───────────────────────────────────────────────────────────
@@ -178,19 +209,27 @@ class MinioDataLayer(BaseDataLayer):
         data = await self._get_json(f"chat/users/{identifier}.json")
         if not data:
             return None
-        return PersistedUser(id=data["id"], createdAt=data["createdAt"],
-                             identifier=data["identifier"],
-                             display_name=data.get("display_name"),
-                             metadata=data.get("metadata") or {})
+        return PersistedUser(
+            id=data["id"],
+            createdAt=data["createdAt"],
+            identifier=data["identifier"],
+            display_name=data.get("display_name"),
+            metadata=data.get("metadata") or {},
+        )
 
     async def create_user(self, user: User) -> Optional[PersistedUser]:
         existing = await self._get_json(f"chat/users/{user.identifier}.json") or {}
-        data = {"id": user.identifier, "identifier": user.identifier,
-                "display_name": user.display_name, "metadata": user.metadata or {},
-                "createdAt": existing.get("createdAt") or _now()}
+        data = {
+            "id": user.identifier,
+            "identifier": user.identifier,
+            "display_name": user.display_name,
+            "metadata": user.metadata or {},
+            "createdAt": existing.get("createdAt") or _now(),
+        }
         await self._put_json(f"chat/users/{user.identifier}.json", data)
-        return PersistedUser(**{k: data[k] for k in ("id", "createdAt", "identifier",
-                                                      "display_name", "metadata")})
+        return PersistedUser(
+            **{k: data[k] for k in ("id", "createdAt", "identifier", "display_name", "metadata")}
+        )
 
     # ── Steps ───────────────────────────────────────────────────────────
 
@@ -244,8 +283,9 @@ class MinioDataLayer(BaseDataLayer):
             body = content.encode("utf-8") if isinstance(content, str) else content
             if len(body) <= MAX_ELEMENT_BYTES:
                 mime = getattr(element, "mime", None) or "text/plain"
-                await asyncio.to_thread(self._put, f"chat/elements/{thread_id}/{element.id}",
-                                        body, mime)
+                await asyncio.to_thread(
+                    self._put, f"chat/elements/{thread_id}/{element.id}", body, mime
+                )
                 el["url"] = f"{ELEMENT_URL_PREFIX}/{thread_id}/{element.id}"
         async with self._lock(thread_id):
             thread = await self._load_or_new(thread_id)
@@ -282,9 +322,14 @@ class MinioDataLayer(BaseDataLayer):
         thread = await self._load(thread_id)
         return (thread or {}).get("userIdentifier") or ""
 
-    async def update_thread(self, thread_id: str, name: Optional[str] = None,
-                            user_id: Optional[str] = None, metadata: Optional[Dict] = None,
-                            tags: Optional[List[str]] = None):
+    async def update_thread(
+        self,
+        thread_id: str,
+        name: Optional[str] = None,
+        user_id: Optional[str] = None,
+        metadata: Optional[Dict] = None,
+        tags: Optional[List[str]] = None,
+    ):
         async with self._lock(thread_id):
             thread = await self._load_or_new(thread_id)
             if name is not None:
@@ -307,11 +352,13 @@ class MinioDataLayer(BaseDataLayer):
             if thread and thread.get("userId"):
                 await self._update_index(thread, remove=True)
 
-    async def list_threads(self, pagination: Pagination,
-                           filters: ThreadFilter) -> PaginatedResponse[ThreadDict]:
+    async def list_threads(
+        self, pagination: Pagination, filters: ThreadFilter
+    ) -> PaginatedResponse[ThreadDict]:
         if not filters.userId:
-            return PaginatedResponse(pageInfo=PageInfo(hasNextPage=False, startCursor=None,
-                                                       endCursor=None), data=[])
+            return PaginatedResponse(
+                pageInfo=PageInfo(hasNextPage=False, startCursor=None, endCursor=None), data=[]
+            )
         index = await self._get_json(f"chat/index/{filters.userId}.json") or []
         rows = [t for t in index if t.get("name")]
         if filters.search:
@@ -325,26 +372,48 @@ class MinioDataLayer(BaseDataLayer):
         if pagination.cursor:
             ids = [t["id"] for t in rows]
             start = ids.index(pagination.cursor) + 1 if pagination.cursor in ids else 0
-        page = rows[start:start + pagination.first]
-        data = [ThreadDict(id=t["id"], createdAt=t["createdAt"], name=t.get("name"),
-                           userId=filters.userId, userIdentifier=filters.userId,
-                           tags=t.get("tags") or [], metadata={}, steps=[], elements=[])
-                for t in page]
+        page = rows[start : start + pagination.first]
+        data = [
+            ThreadDict(
+                id=t["id"],
+                createdAt=t["createdAt"],
+                name=t.get("name"),
+                userId=filters.userId,
+                userIdentifier=filters.userId,
+                tags=t.get("tags") or [],
+                metadata={},
+                steps=[],
+                elements=[],
+            )
+            for t in page
+        ]
         return PaginatedResponse(
-            pageInfo=PageInfo(hasNextPage=start + pagination.first < len(rows),
-                              startCursor=page[0]["id"] if page else None,
-                              endCursor=page[-1]["id"] if page else None),
-            data=data)
+            pageInfo=PageInfo(
+                hasNextPage=start + pagination.first < len(rows),
+                startCursor=page[0]["id"] if page else None,
+                endCursor=page[-1]["id"] if page else None,
+            ),
+            data=data,
+        )
 
     async def get_thread(self, thread_id: str) -> Optional[ThreadDict]:
         thread = await self._load(thread_id)
         if not thread:
             return None
-        steps = sorted(thread.get("steps", []), key=lambda s: s.get("createdAt") or s.get("start") or "")
-        return ThreadDict(id=thread["id"], createdAt=thread["createdAt"], name=thread.get("name"),
-                          userId=thread.get("userId"), userIdentifier=thread.get("userIdentifier"),
-                          tags=thread.get("tags") or [], metadata=thread.get("metadata") or {},
-                          steps=steps, elements=thread.get("elements") or [])
+        steps = sorted(
+            thread.get("steps", []), key=lambda s: s.get("createdAt") or s.get("start") or ""
+        )
+        return ThreadDict(
+            id=thread["id"],
+            createdAt=thread["createdAt"],
+            name=thread.get("name"),
+            userId=thread.get("userId"),
+            userIdentifier=thread.get("userIdentifier"),
+            tags=thread.get("tags") or [],
+            metadata=thread.get("metadata") or {},
+            steps=steps,
+            elements=thread.get("elements") or [],
+        )
 
     # ── Feedback ────────────────────────────────────────────────────────
 
@@ -357,16 +426,28 @@ class MinioDataLayer(BaseDataLayer):
                 thread = await self._load(thread_id)
                 for step in (thread or {}).get("steps", []):
                     if step["id"] == feedback.forId:
-                        step["feedback"] = {"id": feedback_id, "forId": feedback.forId,
-                                            "value": feedback.value, "comment": feedback.comment}
+                        step["feedback"] = {
+                            "id": feedback_id,
+                            "forId": feedback.forId,
+                            "value": feedback.value,
+                            "comment": feedback.comment,
+                        }
                         self._feedback_step[feedback_id] = step["id"]
                         trace_id = (step.get("metadata") or {}).get("langfuse_trace_id")
                         await self._save(thread)
                         break
         await feedback_scores.send(feedback_id, trace_id, feedback.value, feedback.comment)
-        await self._put_json(f"chat/feedback/{feedback_id}.json", {
-            "id": feedback_id, "threadId": thread_id, "forId": feedback.forId,
-            "value": feedback.value, "comment": feedback.comment, "at": _now()})
+        await self._put_json(
+            f"chat/feedback/{feedback_id}.json",
+            {
+                "id": feedback_id,
+                "threadId": thread_id,
+                "forId": feedback.forId,
+                "value": feedback.value,
+                "comment": feedback.comment,
+                "at": _now(),
+            },
+        )
         return feedback_id
 
     async def delete_feedback(self, feedback_id: str) -> bool:
@@ -384,7 +465,7 @@ class MinioDataLayer(BaseDataLayer):
         return True
 
     async def get_favorite_steps(self, user_id: str) -> List:
-        return []                                    # favorites are disabled in config.toml
+        return []  # favorites are disabled in config.toml
 
     async def build_debug_url(self) -> str:
         return ""

@@ -126,8 +126,12 @@ def init_converter() -> None:
     global _converter, _sem
     _converter = build_converter()
     _sem = asyncio.Semaphore(max(1, OCR_CONCURRENCY))
-    log.info("[docling] converter ready (device=%s, ocr=%s, table=%s)",
-             DOCLING_DEVICE, DOCLING_OCR_ENGINE, DOCLING_TABLE_MODE)
+    log.info(
+        "[docling] converter ready (device=%s, ocr=%s, table=%s)",
+        DOCLING_DEVICE,
+        DOCLING_OCR_ENGINE,
+        DOCLING_TABLE_MODE,
+    )
 
 
 def is_ready() -> bool:
@@ -137,8 +141,11 @@ def is_ready() -> bool:
 def convert_with(converter: DocumentConverter, path: Path) -> DoclingDocument:
     result = converter.convert(str(path), raises_on_error=True)
     if result.status == ConversionStatus.PARTIAL_SUCCESS:
-        log.warning("[docling] %s converted partially: %s",
-                    path.name, [e.error_message for e in result.errors])
+        log.warning(
+            "[docling] %s converted partially: %s",
+            path.name,
+            [e.error_message for e in result.errors],
+        )
     return result.document
 
 
@@ -155,6 +162,7 @@ async def convert(path: Path) -> DoclingDocument:
     async with _sem:
         if GPU_SWAP and path.suffix.lower() in GPU_EXTS:
             import gpu_worker
+
             try:
                 async with gpu_worker.ocr_lease():
                     return await gpu_worker.convert(path)
@@ -164,6 +172,7 @@ async def convert(path: Path) -> DoclingDocument:
 
 
 # Exporters
+
 
 def export_html(doc: DoclingDocument) -> str:
     """HTML with pictures embedded as data URIs (input for the DOCX export).

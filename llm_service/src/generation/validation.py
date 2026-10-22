@@ -39,8 +39,10 @@ _PII_PATTERNS = {
     "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
     # International (+CC ...) or separated national formats only, so plain
     # digit runs like order / invoice numbers are left alone.
-    "phone": re.compile(r"(?<!\w)(?:\+\d{1,3}[ .-]?(?:\(?\d{1,4}\)?[ .-]?){2,5}\d{2,4}"
-                        r"|\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4})\b"),
+    "phone": re.compile(
+        r"(?<!\w)(?:\+\d{1,3}[ .-]?(?:\(?\d{1,4}\)?[ .-]?){2,5}\d{2,4}"
+        r"|\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4})\b"
+    ),
 }
 
 
@@ -80,6 +82,7 @@ def mask_pii(text: str, evidence: list[Evidence]) -> tuple[str, int]:
                 return value
             count += 1
             return f"[{kind} redacted]"
+
         return repl
 
     for kind, pattern in _PII_PATTERNS.items():
@@ -88,6 +91,7 @@ def mask_pii(text: str, evidence: list[Evidence]) -> tuple[str, int]:
 
 
 # ── Validation ──────────────────────────────────────────────────────────
+
 
 def _citation_ok(answer: GenerateResponse, evidence: list[Evidence]) -> bool:
     numbers = cited_numbers(answer.answer_markdown)
@@ -98,42 +102,77 @@ def _citation_ok(answer: GenerateResponse, evidence: list[Evidence]) -> bool:
     return True
 
 
-async def validate(plan: QueryPlan, evidence: list[Evidence],
-                   answer: GenerateResponse, direct: bool) -> ValidateResponse:
+async def validate(
+    plan: QueryPlan, evidence: list[Evidence], answer: GenerateResponse, direct: bool
+) -> ValidateResponse:
     if not answer.schema_ok or not answer.answer_markdown.strip():
-        return ValidateResponse(answer_markdown=answer.answer_markdown, verdict=Verdict(
-            action="retry", reason="answer did not match the output schema",
-            grounded_score=0.0, citation_ok=False, schema_ok=False))
+        return ValidateResponse(
+            answer_markdown=answer.answer_markdown,
+            verdict=Verdict(
+                action="retry",
+                reason="answer did not match the output schema",
+                grounded_score=0.0,
+                citation_ok=False,
+                schema_ok=False,
+            ),
+        )
 
-    text, pii = (mask_pii(answer.answer_markdown, evidence) if MASK_PII
-                 else (answer.answer_markdown, 0))
+    text, pii = (
+        mask_pii(answer.answer_markdown, evidence) if MASK_PII else (answer.answer_markdown, 0)
+    )
 
     if direct:
-        return ValidateResponse(answer_markdown=text, verdict=Verdict(
-            action="accept", reason="direct answer (no retrieval)", grounded_score=1.0,
-            citation_ok=True, schema_ok=True, pii_masked=pii))
+        return ValidateResponse(
+            answer_markdown=text,
+            verdict=Verdict(
+                action="accept",
+                reason="direct answer (no retrieval)",
+                grounded_score=1.0,
+                citation_ok=True,
+                schema_ok=True,
+                pii_masked=pii,
+            ),
+        )
 
     if not evidence or answer.insufficient_evidence:
-        return ValidateResponse(answer_markdown=text, verdict=Verdict(
-            action="retry", reason="no usable evidence for this question",
-            grounded_score=0.0, citation_ok=True, schema_ok=True, pii_masked=pii))
+        return ValidateResponse(
+            answer_markdown=text,
+            verdict=Verdict(
+                action="retry",
+                reason="no usable evidence for this question",
+                grounded_score=0.0,
+                citation_ok=True,
+                schema_ok=True,
+                pii_masked=pii,
+            ),
+        )
 
     citation_ok = _citation_ok(answer, evidence)
 
     try:
-        judge = await chat_json(judge_messages(plan.standalone_question,
-                                               answer.answer_markdown, evidence),
-                                JudgeOutput, max_tokens=1024)
+        judge = await chat_json(
+            judge_messages(plan.standalone_question, answer.answer_markdown, evidence),
+            JudgeOutput,
+            max_tokens=1024,
+        )
     except Exception as e:
         # Without a judge we can only trust citations; be conservative.
         log.warning("[validate] judge failed: %s", e)
         judge = None
 
     if judge is not None and (judge.unsafe or judge.policy_violation):
-        return ValidateResponse(answer_markdown=BLOCKED_MESSAGE, verdict=Verdict(
-            action="blocked", reason="answer flagged by the safety check",
-            grounded_score=0.0, citation_ok=citation_ok, schema_ok=True,
-            pii_masked=pii, unsafe=True))
+        return ValidateResponse(
+            answer_markdown=BLOCKED_MESSAGE,
+            verdict=Verdict(
+                action="blocked",
+                reason="answer flagged by the safety check",
+                grounded_score=0.0,
+                citation_ok=citation_ok,
+                schema_ok=True,
+                pii_masked=pii,
+                unsafe=True,
+            ),
+        )
 
     if judge is None:
         grounded = 0.75 if citation_ok else 0.0
@@ -153,9 +192,22 @@ async def validate(plan: QueryPlan, evidence: list[Evidence],
     else:
         action, reason = "accept", "answer is grounded in the cited evidence"
 
-    log.info("[validate] action=%s grounded=%.2f citations_ok=%s pii=%d",
-             action, grounded, citation_ok, pii)
-    return ValidateResponse(answer_markdown=text, verdict=Verdict(
-        action=action, reason=reason, grounded_score=round(grounded, 3),
-        citation_ok=citation_ok, schema_ok=True, unsupported_claims=unsupported,
-        pii_masked=pii))
+    log.info(
+        "[validate] action=%s grounded=%.2f citations_ok=%s pii=%d",
+        action,
+        grounded,
+        citation_ok,
+        pii,
+    )
+    return ValidateResponse(
+        answer_markdown=text,
+        verdict=Verdict(
+            action=action,
+            reason=reason,
+            grounded_score=round(grounded, 3),
+            citation_ok=citation_ok,
+            schema_ok=True,
+            unsupported_claims=unsupported,
+            pii_masked=pii,
+        ),
+    )

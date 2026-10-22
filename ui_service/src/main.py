@@ -48,7 +48,13 @@ from urllib.parse import quote
 import httpx
 import uvicorn
 from fastapi import Body, FastAPI, Form, HTTPException, Request, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from chainlit.utils import mount_chainlit
 
@@ -63,7 +69,8 @@ RAG_SERVICE_URL = os.environ.get("RAG_SERVICE_URL", "http://rag_service:8003")
 # /ocr waits for a GPU swap (LLM stop + Docling load) before converting.
 OCR_PROXY_TIMEOUT = float(os.environ.get("OCR_PROXY_TIMEOUT", "1800"))
 ORCHESTRATOR_SERVICE_URL = os.environ.get(
-    "ORCHESTRATOR_SERVICE_URL", "http://orchestrator_service:8004",
+    "ORCHESTRATOR_SERVICE_URL",
+    "http://orchestrator_service:8004",
 )
 
 app = FastAPI(title="Advanced Hybrid RAG UI", docs_url=None, redoc_url=None)
@@ -72,22 +79,22 @@ app.add_middleware(AuthMiddleware)
 
 class _SilencePathsFilter(logging.Filter):
     """Drop uvicorn access lines for /health probes so real events show."""
+
     def __init__(self, paths: tuple[str, ...]) -> None:
         super().__init__()
         self._paths = paths
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not any(f' {p} ' in msg for p in self._paths)
+        return not any(f" {p} " in msg for p in self._paths)
 
 
-logging.getLogger("uvicorn.access").addFilter(
-    _SilencePathsFilter(("/health",))
-)
+logging.getLogger("uvicorn.access").addFilter(_SilencePathsFilter(("/health",)))
 app.mount("/static", StaticFiles(directory=str(TEMPLATES_DIR)), name="static")
 
 
 # ── Template rendering ──────────────────────────────────────────────────
+
 
 def _render(name: str, *, user: Optional[auth_client.CurrentUser] = None) -> str:
     """Load a static HTML file and substitute the @@PROFILE_MENU@@ sentinel
@@ -105,7 +112,7 @@ def _render(name: str, *, user: Optional[auth_client.CurrentUser] = None) -> str
         '<circle cx="9" cy="13" r="1.2"/><circle cx="15" cy="13" r="1.2"/>'
         '<path d="M9 17h6"/>'
         '<path d="M4 12H2.5"/><path d="M21.5 12H20"/>'
-        '</svg>'
+        "</svg>"
     )
     history_svg = (
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
@@ -113,7 +120,7 @@ def _render(name: str, *, user: Optional[auth_client.CurrentUser] = None) -> str
         'aria-hidden="true">'
         '<path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/>'
         '<path d="M12 7v5l3 2"/>'
-        '</svg>'
+        "</svg>"
     )
     settings_svg = (
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
@@ -121,7 +128,7 @@ def _render(name: str, *, user: Optional[auth_client.CurrentUser] = None) -> str
         'aria-hidden="true">'
         '<circle cx="12" cy="12" r="3"/>'
         '<path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.4.8.7 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'
-        '</svg>'
+        "</svg>"
     )
     admin_svg = (
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
@@ -129,7 +136,7 @@ def _render(name: str, *, user: Optional[auth_client.CurrentUser] = None) -> str
         'aria-hidden="true">'
         '<path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/>'
         '<path d="M9 12l2 2 4-4"/>'
-        '</svg>'
+        "</svg>"
     )
     logout_svg = (
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
@@ -137,14 +144,15 @@ def _render(name: str, *, user: Optional[auth_client.CurrentUser] = None) -> str
         'aria-hidden="true">'
         '<path d="M15 17l5-5-5-5"/><path d="M20 12H9"/>'
         '<path d="M12 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/>'
-        '</svg>'
+        "</svg>"
     )
 
     admin_item = (
         f'<a class="profile-item" href="/admin">'
         f'<span class="profile-ico">{admin_svg}</span>'
         f'<span class="profile-item-label">Administration</span></a>'
-        if user.role in ("admin", "master") else ""
+        if user.role in ("admin", "master")
+        else ""
     )
     menu = f"""
 <div class="profile-wrap" id="profile-wrap">
@@ -296,8 +304,13 @@ def _render(name: str, *, user: Optional[auth_client.CurrentUser] = None) -> str
 
 
 def _e(s: str) -> str:
-    return (s.replace("&", "&amp;").replace("<", "&lt;")
-             .replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;"))
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
+    )
 
 
 def _require_user(request: Request) -> auth_client.CurrentUser:
@@ -329,6 +342,7 @@ def _safe_next(raw: Optional[str]) -> str:
 
 
 # ── Auth pages ──────────────────────────────────────────────────────────
+
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
@@ -427,8 +441,12 @@ async def change_password_submit(
 @app.get("/me")
 async def me(request: Request):
     user = _require_user(request)
-    return {"id": user.id, "username": user.username, "role": user.role,
-            "must_change_password": user.must_change_password}
+    return {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "must_change_password": user.must_change_password,
+    }
 
 
 @app.get("/history", response_class=HTMLResponse)
@@ -450,6 +468,7 @@ async def settings_page(request: Request):
 
 
 # ── Admin console ───────────────────────────────────────────────────────
+
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
@@ -499,6 +518,7 @@ async def admin_users_delete(request: Request, user_id: str):
 
 # ── Main UI pages ───────────────────────────────────────────────────────
 
+
 @app.get("/")
 async def index():
     return RedirectResponse(url="/chat/", status_code=307)
@@ -517,6 +537,7 @@ async def batch_page(request: Request):
 
 
 # ── OCR proxies — every call carries identity headers ───────────────────
+
 
 @app.post("/ocr")
 async def ocr(request: Request, file: UploadFile = File(...)):
@@ -547,8 +568,9 @@ async def document_index_status(request: Request, doc_id: str):
     did = quote(doc_id, safe="")
     async with httpx.AsyncClient(timeout=30) as client:
         try:
-            doc = await client.get(f"{OCR_SERVICE_URL}/documents/{did}",
-                                  headers=_identity_headers(user))
+            doc = await client.get(
+                f"{OCR_SERVICE_URL}/documents/{did}", headers=_identity_headers(user)
+            )
             if doc.status_code != 200:
                 raise HTTPException(status_code=doc.status_code, detail="Document not found")
             resp = await client.get(f"{RAG_SERVICE_URL}/ingest/{did}")
@@ -559,8 +581,12 @@ async def document_index_status(request: Request, doc_id: str):
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
     d = resp.json()
-    return {"status": d.get("status", "pending"), "chunk_count": d.get("chunk_count"),
-            "points": d.get("points"), "error": d.get("error")}
+    return {
+        "status": d.get("status", "pending"),
+        "chunk_count": d.get("chunk_count"),
+        "points": d.get("points"),
+        "error": d.get("error"),
+    }
 
 
 @app.get("/documents/{doc_id}/images/{filename}")
@@ -601,7 +627,7 @@ async def document_artifact(request: Request, doc_id: str, kind: str):
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
     content_type = resp.headers.get("content-type", "application/octet-stream")
-    disposition  = resp.headers.get("content-disposition")
+    disposition = resp.headers.get("content-disposition")
     headers = {}
     if disposition:
         headers["Content-Disposition"] = disposition
@@ -632,8 +658,9 @@ async def preview(request: Request, doc_id: str):
 
 
 @app.get("/documents")
-async def list_documents(request: Request, limit: int = 50, offset: int = 0,
-                         status: str | None = None):
+async def list_documents(
+    request: Request, limit: int = 50, offset: int = 0, status: str | None = None
+):
     user = _require_user(request)
     params = {"limit": limit, "offset": offset}
     if status:
@@ -689,7 +716,11 @@ async def set_document_access(request: Request, doc_id: str, payload: dict = Bod
             )
         except httpx.ConnectError:
             raise HTTPException(status_code=503, detail="OCR service is unavailable")
-    body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"detail": resp.text}
+    body = (
+        resp.json()
+        if resp.headers.get("content-type", "").startswith("application/json")
+        else {"detail": resp.text}
+    )
     return JSONResponse(content=body, status_code=resp.status_code)
 
 
@@ -730,23 +761,22 @@ async def ocr_batch(request: Request, files: List[UploadFile] = File(...)):
                         body = await resp.aread()
                         yield (
                             "event: error\n"
-                            f"data: {{\"status\": {resp.status_code}, "
-                            f"\"detail\": {body.decode('utf-8', 'replace')!r}}}\n\n"
+                            f'data: {{"status": {resp.status_code}, '
+                            f'"detail": {body.decode("utf-8", "replace")!r}}}\n\n'
                         ).encode("utf-8")
                         return
                     async for chunk in resp.aiter_raw():
                         if chunk:
                             yield chunk
             except httpx.ConnectError:
-                yield (b"event: error\n"
-                       b"data: {\"detail\": \"OCR service is unavailable\"}\n\n")
+                yield (b'event: error\ndata: {"detail": "OCR service is unavailable"}\n\n')
 
     return StreamingResponse(
         proxy(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control":     "no-cache",
-            "Connection":        "keep-alive",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )
@@ -771,8 +801,7 @@ async def ocr_batch_zip(request: Request, payload: dict = Body(...)):
         iter([resp.content]),
         media_type="application/zip",
         headers={
-            "Content-Disposition":
-                'attachment; filename="OCR_results.zip"',
+            "Content-Disposition": 'attachment; filename="OCR_results.zip"',
         },
     )
 
@@ -801,6 +830,7 @@ async def preview_input(request: Request, file: UploadFile = File(...)):
 
 # ── RAG chat proxies — every call carries identity headers ─────────────
 
+
 @app.post("/rag/chat")
 async def rag_chat(request: Request, payload: dict = Body(...)):
     user = _require_user(request)
@@ -817,24 +847,28 @@ async def rag_chat(request: Request, payload: dict = Body(...)):
                     if resp.status_code != 200:
                         body = await resp.aread()
                         detail = body.decode("utf-8", "replace")
-                        yield ("event: error\n"
-                               f"data: {{\"service\": \"orchestrator\", \"detail\": "
-                               f"{json.dumps(detail[:300])}}}\n\n").encode("utf-8")
+                        yield (
+                            "event: error\n"
+                            f'data: {{"service": "orchestrator", "detail": '
+                            f"{json.dumps(detail[:300])}}}\n\n"
+                        ).encode("utf-8")
                         return
                     async for chunk in resp.aiter_raw():
                         if chunk:
                             yield chunk
             except httpx.ConnectError:
-                yield (b"event: error\n"
-                       b"data: {\"service\": \"orchestrator\", "
-                       b"\"detail\": \"RAG service is unavailable\"}\n\n")
+                yield (
+                    b"event: error\n"
+                    b'data: {"service": "orchestrator", '
+                    b'"detail": "RAG service is unavailable"}\n\n'
+                )
 
     return StreamingResponse(
         proxy(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control":     "no-cache",
-            "Connection":        "keep-alive",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )
@@ -857,8 +891,10 @@ async def rag_query(request: Request, payload: dict = Body(...)):
 
 # ── Chainlit chat (mounted last so the routes above take precedence) ───
 
+
 def _chat_data_layer():
     import chat_app
+
     return chat_app._data_layer
 
 
@@ -869,7 +905,9 @@ async def _delete_chat_history(user_id: str) -> None:
     try:
         await layer.delete_user_data(user_id)
     except Exception as e:  # history cleanup must never block account deletion
-        logging.getLogger("ui_service").warning("chat history cleanup for %s failed: %s", user_id, e)
+        logging.getLogger("ui_service").warning(
+            "chat history cleanup for %s failed: %s", user_id, e
+        )
 
 
 @app.get("/chat-files/{thread_id}/{element_id}")
@@ -883,9 +921,11 @@ async def chat_file(request: Request, thread_id: str, element_id: str):
     if found is None:
         raise HTTPException(status_code=404, detail="Not found")
     body, mime = found
-    return Response(content=body, media_type=mime,
-                    headers={"Content-Disposition": "inline",
-                             "X-Content-Type-Options": "nosniff"})
+    return Response(
+        content=body,
+        media_type=mime,
+        headers={"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 mount_chainlit(app=app, target=str(Path(__file__).parent / "chat_app.py"), path="/chat")
