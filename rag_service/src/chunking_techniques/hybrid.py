@@ -56,8 +56,9 @@ class _TextOnlySerializer(ChunkingDocSerializer):
 
     skip_refs: set[str] = set()
 
-    def serialize(self, *, item: NodeItem | None = None, visited: set[str] | None = None,
-                  **kwargs) -> SerializationResult:
+    def serialize(
+        self, *, item: NodeItem | None = None, visited: set[str] | None = None, **kwargs
+    ) -> SerializationResult:
         if item is not None and (isinstance(item, _FLOATS) or item.self_ref in self.skip_refs):
             if visited is not None:
                 visited.add(item.self_ref)
@@ -67,8 +68,11 @@ class _TextOnlySerializer(ChunkingDocSerializer):
 
 class _TextOnlyProvider(ChunkingSerializerProvider):
     def get_serializer(self, doc: DoclingDocument) -> ChunkingDocSerializer:
-        skip = {ref.cref for item in [*doc.tables, *doc.pictures]
-                for ref in [*item.captions, *item.footnotes]}
+        skip = {
+            ref.cref
+            for item in [*doc.tables, *doc.pictures]
+            for ref in [*item.captions, *item.footnotes]
+        }
         return _TextOnlySerializer(doc=doc, skip_refs=skip)
 
 
@@ -121,9 +125,12 @@ def _layout(doc: DoclingDocument) -> tuple[dict[str, int], list[tuple[NodeItem, 
     return order, floats
 
 
-def chunk_document(doc: DoclingDocument, chunker: HybridChunker,
-                   figure_descriptions: dict[str, str] | None = None,
-                   row_pages: RowPages | None = None) -> list[RawChunk]:
+def chunk_document(
+    doc: DoclingDocument,
+    chunker: HybridChunker,
+    figure_descriptions: dict[str, str] | None = None,
+    row_pages: RowPages | None = None,
+) -> list[RawChunk]:
     """`figure_descriptions` maps picture self_ref -> generated description,
     `row_pages` is what table_merge returned for this document."""
     figure_descriptions = figure_descriptions or {}
@@ -142,32 +149,59 @@ def chunk_document(doc: DoclingDocument, chunker: HybridChunker,
         heading_path = " > ".join(headings)
         start, end = _pages(items)
         pos = min((order.get(it.self_ref, 0) for it in items), default=0)
-        keyed.append(((pos, 0), RawChunk(
-            index=0, text=body, embed_text=f"{heading_path}\n{body}" if heading_path else body,
-            headings=headings, page_start=start, page_end=end, chunk_type=_chunk_type(items))))
+        keyed.append(
+            (
+                (pos, 0),
+                RawChunk(
+                    index=0,
+                    text=body,
+                    embed_text=f"{heading_path}\n{body}" if heading_path else body,
+                    headings=headings,
+                    page_start=start,
+                    page_end=end,
+                    chunk_type=_chunk_type(items),
+                ),
+            )
+        )
 
     for item, headings in floats:
         heading_path = " > ".join(headings)
         start, end = _pages([item])
         if isinstance(item, TableItem):
-            pieces = table_chunks(doc, item, heading_path, count_tokens, max_tokens,
-                                  row_pages.get(item.self_ref))
+            pieces = table_chunks(
+                doc, item, heading_path, count_tokens, max_tokens, row_pages.get(item.self_ref)
+            )
             ctype = "table"
         else:
-            piece = figure_chunk(doc, item, heading_path, figure_descriptions.get(item.self_ref, ""))
+            piece = figure_chunk(
+                doc, item, heading_path, figure_descriptions.get(item.self_ref, "")
+            )
             pieces = [(*piece, None)] if piece else []
             ctype = "figure"
         for sub, (text, embed_text, pages) in enumerate(pieces):
-            keyed.append(((order[item.self_ref], sub), RawChunk(
-                index=0, text=text, embed_text=embed_text, headings=headings,
-                page_start=pages[0] if pages else start, page_end=pages[1] if pages else end,
-                chunk_type=ctype)))
+            keyed.append(
+                (
+                    (order[item.self_ref], sub),
+                    RawChunk(
+                        index=0,
+                        text=text,
+                        embed_text=embed_text,
+                        headings=headings,
+                        page_start=pages[0] if pages else start,
+                        page_end=pages[1] if pages else end,
+                        chunk_type=ctype,
+                    ),
+                )
+            )
 
     keyed.sort(key=lambda kc: kc[0])
     out = [c for _, c in keyed]
     for i, c in enumerate(out):
         c.index = i
-    log.info("[chunk] %d chunks (%d table, %d figure)", len(out),
-             sum(1 for c in out if c.chunk_type == "table"),
-             sum(1 for c in out if c.chunk_type == "figure"))
+    log.info(
+        "[chunk] %d chunks (%d table, %d figure)",
+        len(out),
+        sum(1 for c in out if c.chunk_type == "table"),
+        sum(1 for c in out if c.chunk_type == "figure"),
+    )
     return out

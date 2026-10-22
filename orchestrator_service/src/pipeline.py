@@ -62,9 +62,11 @@ def _citation_links(citations: list[dict]) -> list[dict]:
 def _insufficient(plan: dict, routes: list[str], route_status: dict) -> str:
     searched = ", ".join(f"{r} ({route_status.get(r, 'not run')})" for r in routes) or "nothing"
     if plan.get("language", "en").startswith("en"):
-        return ("I couldn't find enough reliable evidence to answer this.\n\n"
-                f"Searched: {searched}. Try rephrasing, naming the document, or uploading "
-                "the source that contains the answer.")
+        return (
+            "I couldn't find enough reliable evidence to answer this.\n\n"
+            f"Searched: {searched}. Try rephrasing, naming the document, or uploading "
+            "the source that contains the answer."
+        )
     return f"Not enough evidence found. Searched: {searched}."
 
 
@@ -72,14 +74,26 @@ def _dbg(on: bool, key: str, evs: list[dict] | None) -> dict:
     """Full chunk text for the admin debug trace (empty unless enabled)."""
     if not on or not evs:
         return {}
-    return {key: [{"n": i, "id": e.get("id"), "route": e.get("route"), "source": e.get("source"),
-                   "page": e.get("page"), "score": round(e.get("score") or 0, 4),
-                   "headings": e.get("headings") or [], "text": e.get("text", "")}
-                  for i, e in enumerate(evs, start=1)]}
+    return {
+        key: [
+            {
+                "n": i,
+                "id": e.get("id"),
+                "route": e.get("route"),
+                "source": e.get("source"),
+                "page": e.get("page"),
+                "score": round(e.get("score") or 0, 4),
+                "headings": e.get("headings") or [],
+                "text": e.get("text", ""),
+            }
+            for i, e in enumerate(evs, start=1)
+        ]
+    }
 
 
-async def run(question: str, history: list[dict], identity: Identity,
-              options: dict | None = None) -> AsyncIterator[Event]:
+async def run(
+    question: str, history: list[dict], identity: Identity, options: dict | None = None
+) -> AsyncIterator[Event]:
     """The pipeline inside one Langfuse trace. The `answer` event carries the
     trace id so the UI can attach 👍/👎 feedback to it. Runs under an `llm`
     GPU lease; while the GPU is swapped to OCR the wait streams as `gpu_wait`."""
@@ -95,28 +109,43 @@ async def run(question: str, history: list[dict], identity: Identity,
             yield event, data
 
 
-async def _traced(question: str, history: list[dict], identity: Identity,
-                  options: dict) -> AsyncIterator[Event]:
-    with tracing.trace_question(question, str(identity.id), identity.role,
-                                options.get("session_id"), options) as root:
+async def _traced(
+    question: str, history: list[dict], identity: Identity, options: dict
+) -> AsyncIterator[Event]:
+    with tracing.trace_question(
+        question, str(identity.id), identity.role, options.get("session_id"), options
+    ) as root:
         trace_id = tracing.current_trace_id()
         async for event, data in _run(question, history, identity, options):
             if event == "understanding":
-                root.update(metadata={"intent": data.get("intent"), "language": data.get("language")})
+                root.update(
+                    metadata={"intent": data.get("intent"), "language": data.get("language")}
+                )
             elif event == "answer":
                 data = {**data, "trace_id": trace_id}
-                root.update(output={"answer": data.get("answer_markdown"), "action": data.get("action"),
-                                    "citations": len(data.get("citations") or [])},
-                            metadata={"routes": data.get("routes"), "attempts": data.get("attempts"),
-                                      "elapsed_sec": data.get("elapsed_sec")})
+                root.update(
+                    output={
+                        "answer": data.get("answer_markdown"),
+                        "action": data.get("action"),
+                        "citations": len(data.get("citations") or []),
+                    },
+                    metadata={
+                        "routes": data.get("routes"),
+                        "attempts": data.get("attempts"),
+                        "elapsed_sec": data.get("elapsed_sec"),
+                    },
+                )
                 tracing.score_answer(trace_id, data)
             elif event == "error":
-                root.update(level="ERROR", status_message=f"{data.get('service')}: {data.get('detail')}")
+                root.update(
+                    level="ERROR", status_message=f"{data.get('service')}: {data.get('detail')}"
+                )
             yield event, data
 
 
-async def _run(question: str, history: list[dict], identity: Identity,
-               options: dict) -> AsyncIterator[Event]:
+async def _run(
+    question: str, history: list[dict], identity: Identity, options: dict
+) -> AsyncIterator[Event]:
     route_hint: list[str] = options.get("route_hint") or []
     deny_routes: list[str] = options.get("deny_routes") or []
     answer_style: str = options.get("answer_style") or "auto"
@@ -128,23 +157,45 @@ async def _run(question: str, history: list[dict], identity: Identity,
     try:
         # STEP 3 + 4
         plan = await clients.query_analysis(question, history)
-        yield "understanding", {k: plan.get(k) for k in (
-            "standalone_question", "intent", "entities", "filters", "language", "ambiguous")}
+        yield (
+            "understanding",
+            {
+                k: plan.get(k)
+                for k in (
+                    "standalone_question",
+                    "intent",
+                    "entities",
+                    "filters",
+                    "language",
+                    "ambiguous",
+                )
+            },
+        )
         if plan.get("ambiguous") and plan.get("clarifying_question"):
-            yield "answer", {"answer_markdown": plan["clarifying_question"], "citations": [],
-                             "confidence": 0.0, "action": "clarify", "routes": [],
-                             "attempts": 0, "elapsed_sec": round(time.perf_counter() - t0, 2)}
+            yield (
+                "answer",
+                {
+                    "answer_markdown": plan["clarifying_question"],
+                    "citations": [],
+                    "confidence": 0.0,
+                    "action": "clarify",
+                    "routes": [],
+                    "attempts": 0,
+                    "elapsed_sec": round(time.perf_counter() - t0, 2),
+                },
+            )
             return
-        yield "transformation", {k: plan.get(k) for k in (
-            "rewritten", "expansions", "sub_questions", "hyde_passage")}
+        yield (
+            "transformation",
+            {k: plan.get(k) for k in ("rewritten", "expansions", "sub_questions", "hyde_passage")},
+        )
 
         # STEP 5
         decision = await clients.route(plan, identity, route_hint, deny_routes)
         routes: list[str] = decision["routes"]
         if external and "direct" in routes:
             routes = [r for r in routes if r != "direct"] or ["docs"]
-        yield "routing", {**decision, "routes": routes,
-                          "external_evidence": len(external)}
+        yield "routing", {**decision, "routes": routes, "external_evidence": len(external)}
         direct = routes == ["direct"]
 
         best: dict | None = None
@@ -157,25 +208,55 @@ async def _run(question: str, history: list[dict], identity: Identity,
                 if broaden:
                     if "docs" not in routes and "catalog" not in routes:
                         routes = [*routes, "docs"]
-                    if RETRY_ADD_WEB and "web" in decision.get("available", []) and "web" not in routes:
+                    if (
+                        RETRY_ADD_WEB
+                        and "web" in decision.get("available", [])
+                        and "web" not in routes
+                    ):
                         routes = [*routes, "web"]
                 # STEP 5 executors + 6 + 7
                 retrieval = await clients.retrieve(plan, routes, broaden, identity, external, debug)
                 route_status = retrieval["route_status"]
-                yield "retrieved", {"attempt": attempt, "routes": routes, "broaden": broaden,
-                                    "route_status": route_status, **retrieval["stats"],
-                                    **_dbg(debug, "candidate_chunks", retrieval.get("candidates"))}
-                yield "reranked", {"attempt": attempt, "kept": len(retrieval["evidence"]),
-                                   "top": [{"source": e["source"], "route": e["route"],
-                                            "page": e.get("page"), "score": round(e["score"], 3)}
-                                           for e in retrieval["evidence"][:5]],
-                                   **_dbg(debug, "chunks", retrieval["evidence"])}
+                yield (
+                    "retrieved",
+                    {
+                        "attempt": attempt,
+                        "routes": routes,
+                        "broaden": broaden,
+                        "route_status": route_status,
+                        **retrieval["stats"],
+                        **_dbg(debug, "candidate_chunks", retrieval.get("candidates")),
+                    },
+                )
+                yield (
+                    "reranked",
+                    {
+                        "attempt": attempt,
+                        "kept": len(retrieval["evidence"]),
+                        "top": [
+                            {
+                                "source": e["source"],
+                                "route": e["route"],
+                                "page": e.get("page"),
+                                "score": round(e["score"], 3),
+                            }
+                            for e in retrieval["evidence"][:5]
+                        ],
+                        **_dbg(debug, "chunks", retrieval["evidence"]),
+                    },
+                )
                 # STEP 8
                 compressed = await clients.compress(plan, retrieval["evidence"])
                 evidence = compressed["evidence"]
-                yield "compressed", {"attempt": attempt, "evidence": len(evidence),
-                                     **{k: compressed[k] for k in ("dropped", "merged", "extracted", "tokens")},
-                                     **_dbg(debug, "sent_to_llm", evidence)}
+                yield (
+                    "compressed",
+                    {
+                        "attempt": attempt,
+                        "evidence": len(evidence),
+                        **{k: compressed[k] for k in ("dropped", "merged", "extracted", "tokens")},
+                        **_dbg(debug, "sent_to_llm", evidence),
+                    },
+                )
 
             # STEP 9
             yield "generating", {"attempt": attempt, "evidence": len(evidence), "direct": direct}
@@ -186,10 +267,13 @@ async def _run(question: str, history: list[dict], identity: Identity,
             verdict = validation["verdict"]
             yield "validated", {"attempt": attempt, **verdict}
 
-            result = {"answer_markdown": validation["answer_markdown"],
-                      "citations": _citation_links(answer.get("citations", [])),
-                      "confidence": answer.get("confidence", 0.0),
-                      "verdict": verdict, "action": verdict["action"]}
+            result = {
+                "answer_markdown": validation["answer_markdown"],
+                "citations": _citation_links(answer.get("citations", [])),
+                "confidence": answer.get("confidence", 0.0),
+                "verdict": verdict,
+                "action": verdict["action"],
+            }
             if verdict["action"] in {"accept", "blocked"}:
                 break
             if best is None or verdict["grounded_score"] > best["verdict"]["grounded_score"]:
@@ -202,19 +286,39 @@ async def _run(question: str, history: list[dict], identity: Identity,
             if best and best["verdict"]["grounded_score"] >= FALLBACK_MIN_GROUNDED:
                 result = {**best, "action": "accept_low_confidence"}
             elif plan.get("clarifying_question"):
-                result = {**result, "answer_markdown": plan["clarifying_question"],
-                          "citations": [], "action": "clarify"}
+                result = {
+                    **result,
+                    "answer_markdown": plan["clarifying_question"],
+                    "citations": [],
+                    "action": "clarify",
+                }
             else:
-                result = {**result, "answer_markdown": _insufficient(plan, routes, route_status),
-                          "citations": [], "action": "insufficient"}
+                result = {
+                    **result,
+                    "answer_markdown": _insufficient(plan, routes, route_status),
+                    "citations": [],
+                    "action": "insufficient",
+                }
 
         if external and "mcp" not in routes:
             routes = [*routes, "mcp"]
-        yield "answer", {**result, "routes": routes, "attempts": attempt + 1,
-                         "elapsed_sec": round(time.perf_counter() - t0, 2)}
-        log.info("[pipeline] intent=%s routes=%s action=%s attempts=%d %.2fs",
-                 plan.get("intent"), routes, result["action"], attempt + 1,
-                 time.perf_counter() - t0)
+        yield (
+            "answer",
+            {
+                **result,
+                "routes": routes,
+                "attempts": attempt + 1,
+                "elapsed_sec": round(time.perf_counter() - t0, 2),
+            },
+        )
+        log.info(
+            "[pipeline] intent=%s routes=%s action=%s attempts=%d %.2fs",
+            plan.get("intent"),
+            routes,
+            result["action"],
+            attempt + 1,
+            time.perf_counter() - t0,
+        )
     except ServiceError as e:
         log.warning("[pipeline] %s", e)
         yield "error", {"service": e.service, "detail": e.detail}

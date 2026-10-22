@@ -6,6 +6,7 @@ file and are renamed into place, so a crash never leaves a half-written file.
 auth_service is a single process, so an asyncio lock is enough to serialize
 mutations.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,8 +22,15 @@ log = logging.getLogger("auth_service.db")
 
 DATA_FILE = Path(os.getenv("AUTH_DATA_FILE", "/data/auth.json"))
 
-USER_FIELDS = ("id", "username", "role", "must_change_password", "disabled",
-               "created_at", "updated_at")
+USER_FIELDS = (
+    "id",
+    "username",
+    "role",
+    "must_change_password",
+    "disabled",
+    "created_at",
+    "updated_at",
+)
 
 _users: dict[_uuid.UUID, dict] = {}
 _sessions: dict[_uuid.UUID, dict] = {}
@@ -40,9 +48,12 @@ _UUID_FIELDS = {"id", "user_id", "session_id"}
 
 
 def _encode(row: dict) -> dict:
-    return {k: (v.isoformat() if isinstance(v, datetime)
-                else str(v) if isinstance(v, _uuid.UUID) else v)
-            for k, v in row.items()}
+    return {
+        k: (
+            v.isoformat() if isinstance(v, datetime) else str(v) if isinstance(v, _uuid.UUID) else v
+        )
+        for k, v in row.items()
+    }
 
 
 def _decode(row: dict) -> dict:
@@ -59,10 +70,16 @@ def _decode(row: dict) -> dict:
 def _save() -> None:
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = DATA_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({
-        "users": [_encode(u) for u in _users.values()],
-        "sessions": [_encode(s) for s in _sessions.values()],
-    }, indent=2), encoding="utf-8")
+    tmp.write_text(
+        json.dumps(
+            {
+                "users": [_encode(u) for u in _users.values()],
+                "sessions": [_encode(s) for s in _sessions.values()],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     os.replace(tmp, DATA_FILE)
 
 
@@ -78,8 +95,7 @@ async def init_store() -> None:
             s = _decode(s)
             _sessions[s["session_id"]] = s
     _loaded = True
-    log.info("auth store ready: %s (%d users, %d sessions)",
-             DATA_FILE, len(_users), len(_sessions))
+    log.info("auth store ready: %s (%d users, %d sessions)", DATA_FILE, len(_users), len(_sessions))
 
 
 async def health() -> None:
@@ -112,8 +128,9 @@ async def get_user_by_id(user_id: _uuid.UUID) -> Optional[dict]:
     return _public(user) if user else None
 
 
-async def create_user(username: str, password_hash: str, role: str,
-                      must_change_password: bool = True) -> dict:
+async def create_user(
+    username: str, password_hash: str, role: str, must_change_password: bool = True
+) -> dict:
     async with _lock:
         if _find_by_username(username):
             raise ValueError(f"username already exists: {username}")
@@ -143,8 +160,9 @@ async def count_admins() -> int:
 
 async def find_first_user(role: str) -> Optional[dict]:
     """Oldest user with `role` (used by the master bootstrap)."""
-    matches = sorted((u for u in _users.values() if u["role"] == role),
-                     key=lambda u: u["created_at"])
+    matches = sorted(
+        (u for u in _users.values() if u["role"] == role), key=lambda u: u["created_at"]
+    )
     return _public(matches[0]) if matches else None
 
 
@@ -224,11 +242,13 @@ async def delete_session(session_id: _uuid.UUID) -> None:
             _save()
 
 
-async def delete_user_sessions(user_id: _uuid.UUID,
-                               except_session: Optional[_uuid.UUID] = None) -> None:
+async def delete_user_sessions(
+    user_id: _uuid.UUID, except_session: Optional[_uuid.UUID] = None
+) -> None:
     async with _lock:
-        doomed = [sid for sid, s in _sessions.items()
-                  if s["user_id"] == user_id and sid != except_session]
+        doomed = [
+            sid for sid, s in _sessions.items() if s["user_id"] == user_id and sid != except_session
+        ]
         for sid in doomed:
             del _sessions[sid]
         if doomed:

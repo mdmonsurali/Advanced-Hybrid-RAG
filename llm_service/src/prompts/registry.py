@@ -58,8 +58,8 @@ VERSIONS = _parse_versions(os.getenv("PROMPT_VERSIONS", ""))
 LOCAL: dict[str, str] = {}
 # name -> how it was last resolved (served on GET /prompts).
 RESOLVED: dict[str, dict] = {}
-_retry_after: dict[str, float] = {}     # per prompt: not found / unavailable
-_down_until = 0.0                       # Langfuse unreachable: local texts until then
+_retry_after: dict[str, float] = {}  # per prompt: not found / unavailable
+_down_until = 0.0  # Langfuse unreachable: local texts until then
 _lock = threading.Lock()
 _VAR_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
@@ -97,6 +97,7 @@ def _fetch(name: str):
     from langfuse.api import NotFoundError
 
     from tracing import langfuse
+
     pinned = VERSIONS.get(name)
     # A prompt that has no version under PROMPT_LABEL (e.g. staging) uses its
     # production version, so one label can be tried on a few prompts at a time.
@@ -106,8 +107,14 @@ def _fetch(name: str):
     for label in labels:
         try:
             prompt = langfuse.get_prompt(
-                name, version=pinned, label=label, type="text", cache_ttl_seconds=CACHE_TTL,
-                max_retries=0, fetch_timeout_seconds=FETCH_TIMEOUT_SEC)
+                name,
+                version=pinned,
+                label=label,
+                type="text",
+                cache_ttl_seconds=CACHE_TTL,
+                max_retries=0,
+                fetch_timeout_seconds=FETCH_TIMEOUT_SEC,
+            )
             return prompt, label
         except NotFoundError as e:
             error = e
@@ -118,12 +125,16 @@ def _fetch(name: str):
     with _lock:
         first = name not in _retry_after
         _retry_after[name] = backoff
-        if unreachable:             # one outage: stop asking for every prompt
+        if unreachable:  # one outage: stop asking for every prompt
             _down_until = backoff
     if first:
         want = f"version {pinned}" if pinned else f"label {LABEL!r}"
-        log.warning("[prompts] %s (%s) unavailable in Langfuse, using the local text: %s",
-                    name, want, str(error).splitlines()[0][:200])
+        log.warning(
+            "[prompts] %s (%s) unavailable in Langfuse, using the local text: %s",
+            name,
+            want,
+            str(error).splitlines()[0][:200],
+        )
     return None, None
 
 
@@ -132,11 +143,19 @@ def resolve(name: str, **variables: Any) -> tuple[str, Any]:
     prompt, label = _fetch(name)
     if prompt is not None:
         _retry_after.pop(name, None)
-        RESOLVED[name] = {"source": "langfuse", "version": prompt.version, "label": label,
-                          "pinned": name in VERSIONS}
+        RESOLVED[name] = {
+            "source": "langfuse",
+            "version": prompt.version,
+            "label": label,
+            "pinned": name in VERSIONS,
+        }
         return prompt.compile(**variables), prompt
-    RESOLVED[name] = {"source": "local" if SOURCE == "local" or not _KEYS else "local-fallback",
-                      "version": None, "label": None, "pinned": False}
+    RESOLVED[name] = {
+        "source": "local" if SOURCE == "local" or not _KEYS else "local-fallback",
+        "version": None,
+        "label": None,
+        "pinned": False,
+    }
     return _compile_local(LOCAL[name], variables), None
 
 
@@ -147,14 +166,17 @@ def text(name: str, **variables: Any) -> str:
 def messages(name: str, rest: list[dict], **variables: Any) -> Messages:
     """System prompt `name` followed by `rest` (history, user message)."""
     system, prompt = resolve(name, **variables)
-    return Messages([{"role": "system", "content": system}, *rest],
-                    prompt=prompt, prompt_name=name)
+    return Messages([{"role": "system", "content": system}, *rest], prompt=prompt, prompt_name=name)
 
 
 def status() -> dict:
-    return {"source": SOURCE if _KEYS or SOURCE == "local" else "local (no Langfuse keys)",
-            "label": LABEL, "pinned_versions": VERSIONS, "cache_ttl_sec": CACHE_TTL,
-            "prompts": {name: RESOLVED.get(name, {"source": "not used yet"}) for name in sorted(LOCAL)}}
+    return {
+        "source": SOURCE if _KEYS or SOURCE == "local" else "local (no Langfuse keys)",
+        "label": LABEL,
+        "pinned_versions": VERSIONS,
+        "cache_ttl_sec": CACHE_TTL,
+        "prompts": {name: RESOLVED.get(name, {"source": "not used yet"}) for name in sorted(LOCAL)},
+    }
 
 
 def seed_missing() -> None:
@@ -167,22 +189,34 @@ def seed_missing() -> None:
     from langfuse.api import NotFoundError
 
     from tracing import langfuse
+
     for name in sorted(LOCAL):
         try:
-            langfuse.get_prompt(name, type="text", cache_ttl_seconds=0, max_retries=0,
-                                fetch_timeout_seconds=FETCH_TIMEOUT_SEC)
+            langfuse.get_prompt(
+                name,
+                type="text",
+                cache_ttl_seconds=0,
+                max_retries=0,
+                fetch_timeout_seconds=FETCH_TIMEOUT_SEC,
+            )
         except NotFoundError:
             try:
-                langfuse.create_prompt(name=name, prompt=LOCAL[name], type="text",
-                                       labels=["production"],
-                                       commit_message="Seeded from llm_service/src/prompts")
+                langfuse.create_prompt(
+                    name=name,
+                    prompt=LOCAL[name],
+                    type="text",
+                    labels=["production"],
+                    commit_message="Seeded from llm_service/src/prompts",
+                )
                 log.info("[prompts] created %s in Langfuse (label production)", name)
             except Exception as e:
                 log.warning("[prompts] could not create %s: %s", name, e)
                 return
         except Exception as e:
-            log.warning("[prompts] Langfuse unreachable, using the local texts for now: %s",
-                        str(e).splitlines()[0][:200])
+            log.warning(
+                "[prompts] Langfuse unreachable, using the local texts for now: %s",
+                str(e).splitlines()[0][:200],
+            )
             return
     for name in sorted(LOCAL):
         resolve(name)

@@ -18,8 +18,7 @@ log = logging.getLogger("llm_service.tools")
 
 
 async def select(question: str, tools: list[ToolSpec]) -> SelectToolsOutput:
-    out = await chat_json(select_tools_messages(question, tools), SelectToolsOutput,
-                          max_tokens=512)
+    out = await chat_json(select_tools_messages(question, tools), SelectToolsOutput, max_tokens=512)
     known = {(t.server, t.name) for t in tools}
     calls = []
     for call in out.calls:

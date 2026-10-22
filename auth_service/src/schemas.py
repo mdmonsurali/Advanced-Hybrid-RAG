@@ -1,4 +1,5 @@
 """Pydantic request/response models for auth_service."""
+
 from __future__ import annotations
 
 import re

@@ -23,8 +23,11 @@ import re
 from contextlib import contextmanager
 from typing import Any, Iterator, Mapping
 
-ENABLED = (os.getenv("LANGFUSE_TRACING_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-           and bool(os.getenv("LANGFUSE_PUBLIC_KEY")) and bool(os.getenv("LANGFUSE_SECRET_KEY")))
+ENABLED = (
+    os.getenv("LANGFUSE_TRACING_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    and bool(os.getenv("LANGFUSE_PUBLIC_KEY"))
+    and bool(os.getenv("LANGFUSE_SECRET_KEY"))
+)
 if not ENABLED:
     os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
@@ -51,7 +54,11 @@ def compact(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
     if isinstance(value, str):
-        return value if len(value) <= MAX_TEXT else value[:MAX_TEXT] + f"… (+{len(value) - MAX_TEXT} chars)"
+        return (
+            value
+            if len(value) <= MAX_TEXT
+            else value[:MAX_TEXT] + f"… (+{len(value) - MAX_TEXT} chars)"
+        )
     if isinstance(value, Mapping):
         return {k: compact(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -81,12 +88,15 @@ def new_trace() -> dict:
 
 
 @contextmanager
-def task(name: str, headers: Mapping[str, str], *, as_type: str = "chain",
-         input: Any = None) -> Iterator[Any]:
+def task(
+    name: str, headers: Mapping[str, str], *, as_type: str = "chain", input: Any = None
+) -> Iterator[Any]:
     """One observation for a task request, inside the caller's trace (or a new
     trace when the caller sent none)."""
     with langfuse.start_as_current_observation(
-        name=name, as_type=as_type, input=compact(input),
+        name=name,
+        as_type=as_type,
+        input=compact(input),
         trace_context=incoming_context(headers) or new_trace(),
     ) as obs:
         try:

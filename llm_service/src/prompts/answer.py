@@ -11,7 +11,9 @@ from __future__ import annotations
 from prompts import registry
 from schemas import Evidence, QueryPlan
 
-ANSWER_SYSTEM = registry.register("rag/answer", """\
+ANSWER_SYSTEM = registry.register(
+    "rag/answer",
+    """\
 You are a careful assistant that answers strictly from the evidence provided.
 
 Rules:
@@ -27,35 +29,42 @@ Return JSON with:
 - answer_markdown: the answer in Markdown with [n] citations inline.
 - citations: the evidence numbers you cited.
 - confidence: 0.0-1.0, how fully the evidence supports the answer.
-- insufficient_evidence: true if the evidence could not answer the question.""")
+- insufficient_evidence: true if the evidence could not answer the question.""",
+)
 
-DIRECT_SYSTEM = registry.register("rag/direct", """\
+DIRECT_SYSTEM = registry.register(
+    "rag/direct",
+    """\
 You are a helpful, concise assistant inside a document Q&A application. \
 This question does not need the user's documents. Answer briefly from \
 general knowledge in the user's language ({{language}}). If the user asks about \
 their own documents, tell them to ask a specific question about them.
 
 Return JSON with answer_markdown, citations (empty list), confidence and \
-insufficient_evidence (false).""")
+insufficient_evidence (false).""",
+)
 
 INTENT_CONSTRAINTS = {
     "fact": "Give the exact value or statement first, then one or two sentences of context.",
     "comparison": "Present the comparison as a Markdown table (one row per aspect), "
-                  "followed by a one-sentence conclusion.",
+    "followed by a one-sentence conclusion.",
     "troubleshooting": "Give numbered steps in the order the user should try them; "
-                       "mention the likely cause first if the evidence states it.",
+    "mention the likely cause first if the evidence states it.",
     "policy": "Quote the relevant clause or rule verbatim (in quotes) before explaining it.",
     "summary": "Use short bullet points grouped by theme; keep it under 200 words.",
     "catalog": "Answer from the document catalog block; give counts and list document "
-               "names where relevant.",
+    "names where relevant.",
     "chitchat": "Keep it to one or two friendly sentences.",
 }
 
-EXTRACT_SYSTEM = registry.register("rag/extract", """\
+EXTRACT_SYSTEM = registry.register(
+    "rag/extract",
+    """\
 You compress evidence for a question. Copy only the sentences from the \
 passage that help answer the question, verbatim and in their original order. \
 Keep numbers, names and table rows intact. If nothing is relevant, return an \
-empty string.""")
+empty string.""",
+)
 
 
 def format_evidence(evidence: list[Evidence]) -> str:
@@ -91,15 +100,17 @@ def answer_messages(plan: QueryPlan, evidence: list[Evidence], style: str = "aut
         f"Question: {plan.standalone_question}\n"
         f"Format: {constraint}{sub}"
     )
-    return registry.messages("rag/answer", [{"role": "user", "content": user}],
-                             language=plan.language)
+    return registry.messages(
+        "rag/answer", [{"role": "user", "content": user}], language=plan.language
+    )
 
 
 def direct_messages(plan: QueryPlan, style: str = "auto") -> list[dict]:
     constraint = INTENT_CONSTRAINTS.get(plan.intent, "") + STYLE_CONSTRAINTS.get(style, "")
     user = f"{plan.standalone_question}\n\nFormat: {constraint}"
-    return registry.messages("rag/direct", [{"role": "user", "content": user}],
-                             language=plan.language)
+    return registry.messages(
+        "rag/direct", [{"role": "user", "content": user}], language=plan.language
+    )
 
 
 def extract_messages(question: str, passage: str) -> list[dict]:

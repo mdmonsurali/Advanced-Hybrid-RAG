@@ -38,8 +38,10 @@ def load() -> None:
     if _model is None:
         import torch
         from sentence_transformers import CrossEncoder
-        _model = CrossEncoder(RERANK_MODEL, device=RERANK_DEVICE,
-                              model_kwargs={"dtype": getattr(torch, RERANK_DTYPE)})
+
+        _model = CrossEncoder(
+            RERANK_MODEL, device=RERANK_DEVICE, model_kwargs={"dtype": getattr(torch, RERANK_DTYPE)}
+        )
         _model.max_seq_length = min(RERANK_MAX_LENGTH, _model.max_seq_length or RERANK_MAX_LENGTH)
         log.info("reranker ready: %s", RERANK_MODEL)
 
@@ -53,7 +55,12 @@ def score(query: str, texts: list[str]) -> list[float]:
     if not texts:
         return []
     import torch
+
     with _lock:
-        scores = _model.predict([(query, t) for t in texts], batch_size=RERANK_BATCH,
-                                activation_fn=torch.nn.Sigmoid(), show_progress_bar=False)
+        scores = _model.predict(
+            [(query, t) for t in texts],
+            batch_size=RERANK_BATCH,
+            activation_fn=torch.nn.Sigmoid(),
+            show_progress_bar=False,
+        )
     return [float(s) for s in scores]

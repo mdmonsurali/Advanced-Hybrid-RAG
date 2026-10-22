@@ -43,8 +43,13 @@ _registry_lock = asyncio.Lock()
 
 def init_minio() -> None:
     global minio
-    minio = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY,
-                  secure=MINIO_SECURE, region=MINIO_REGION)
+    minio = Minio(
+        MINIO_ENDPOINT,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+        secure=MINIO_SECURE,
+        region=MINIO_REGION,
+    )
     if not minio.bucket_exists(MINIO_BUCKET):
         log.warning("minio bucket %s not found, creating", MINIO_BUCKET)
         minio.make_bucket(MINIO_BUCKET)
@@ -59,6 +64,7 @@ def health_minio() -> None:
 
 # ── Low-level helpers ─────────────────────────────────────────────────────
 
+
 def _get_object_bytes(name: str) -> bytes:
     assert minio is not None
     resp = minio.get_object(MINIO_BUCKET, name)
@@ -71,6 +77,7 @@ def _get_object_bytes(name: str) -> bytes:
 
 class _BytesReader:
     """Minimal file-like wrapper for bytes that the minio SDK accepts."""
+
     __slots__ = ("_b", "_pos")
 
     def __init__(self, b: bytes):
@@ -79,10 +86,10 @@ class _BytesReader:
 
     def read(self, n: int = -1) -> bytes:
         if n < 0 or self._pos + n > len(self._b):
-            chunk = self._b[self._pos:]
+            chunk = self._b[self._pos :]
             self._pos = len(self._b)
             return chunk
-        chunk = self._b[self._pos:self._pos + n]
+        chunk = self._b[self._pos : self._pos + n]
         self._pos += n
         return chunk
 
@@ -90,8 +97,13 @@ class _BytesReader:
 def _put_json(name: str, obj: dict) -> None:
     assert minio is not None
     body = _json.dumps(obj, default=str, ensure_ascii=False).encode("utf-8")
-    minio.put_object(MINIO_BUCKET, name, data=_BytesReader(body), length=len(body),
-                     content_type="application/json")
+    minio.put_object(
+        MINIO_BUCKET,
+        name,
+        data=_BytesReader(body),
+        length=len(body),
+        content_type="application/json",
+    )
 
 
 async def _read_json(name: str) -> Optional[dict]:
@@ -104,6 +116,7 @@ async def _read_json(name: str) -> Optional[dict]:
 
 
 # ── ocr_service documents (read-only) ─────────────────────────────────────
+
 
 async def load_meta(doc_id: str) -> Optional[dict]:
     return await _read_json(f"documents/{doc_id}/meta.json")
@@ -135,6 +148,7 @@ async def put_figure_cache(doc_id: str, cache: dict) -> None:
 
 async def list_ocr_documents() -> list[dict]:
     """Every documents/*/meta.json (used by /ingest/sync)."""
+
     def _list() -> list[dict]:
         assert minio is not None
         metas = []
@@ -145,10 +159,12 @@ async def list_ocr_documents() -> list[dict]:
                 except (S3Error, ValueError) as e:
                     log.warning("skipping unreadable %s: %s", obj.object_name, e)
         return metas
+
     return await asyncio.to_thread(_list)
 
 
 # ── Index registry (rag/{doc_id}/index.json) ──────────────────────────────
+
 
 async def load_registry() -> None:
     def _load() -> list[dict]:
@@ -187,8 +203,10 @@ async def update_index(doc_id: str, **fields) -> Optional[dict]:
 async def delete_index(doc_id: str) -> None:
     def _delete() -> None:
         assert minio is not None
-        keys = [DeleteObject(o.object_name) for o in
-                minio.list_objects(MINIO_BUCKET, prefix=f"rag/{doc_id}/", recursive=True)]
+        keys = [
+            DeleteObject(o.object_name)
+            for o in minio.list_objects(MINIO_BUCKET, prefix=f"rag/{doc_id}/", recursive=True)
+        ]
         for err in minio.remove_objects(MINIO_BUCKET, keys):
             log.warning("minio delete error: %s", err)
 

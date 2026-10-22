@@ -8,6 +8,7 @@ from schemas import DescribeFigureOutput, DescribeFigureRequest
 
 
 async def describe(req: DescribeFigureRequest) -> DescribeFigureOutput:
-    text = await chat_text(figure_messages(req.image_b64, req.mime, req.caption, req.context),
-                           max_tokens=320)
+    text = await chat_text(
+        figure_messages(req.image_b64, req.mime, req.caption, req.context), max_tokens=320
+    )
     return DescribeFigureOutput(description=text.strip().strip('"'))

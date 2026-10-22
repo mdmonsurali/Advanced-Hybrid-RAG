@@ -41,18 +41,21 @@ def is_configured() -> bool:
 def _credentials():
     if GDRIVE_AUTH == "service_account":
         from google.oauth2 import service_account
+
         return service_account.Credentials.from_service_account_file(
-            str(GDRIVE_SECRETS_DIR / "service_account.json"), scopes=SCOPES)
+            str(GDRIVE_SECRETS_DIR / "service_account.json"), scopes=SCOPES
+        )
 
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
+
     token_path = GDRIVE_SECRETS_DIR / "token.json"
     if not token_path.exists():
         raise RuntimeError(f"{token_path} not found — run gdrive_auth.py on the host first")
     creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
     if not creds.valid:
         if creds.expired and creds.refresh_token:
-            creds.refresh(Request())          # refreshed in memory; secrets mount is read-only
+            creds.refresh(Request())  # refreshed in memory; secrets mount is read-only
         else:
             raise RuntimeError("Google Drive token is invalid — re-run gdrive_auth.py")
     return creds
@@ -63,6 +66,7 @@ def _drive():
     with _lock:
         if _service is None:
             from googleapiclient.discovery import build
+
             _service = build("drive", "v3", credentials=_credentials(), cache_discovery=False)
         return _service
 
@@ -75,19 +79,29 @@ def search_files(query: str, mime_types: list[str] | None = None, limit: int = 1
     clauses = [f"fullText contains '{_escape(query)}'", "trashed = false"]
     if mime_types:
         clauses.append("(" + " or ".join(f"mimeType = '{_escape(m)}'" for m in mime_types) + ")")
-    res = _drive().files().list(q=" and ".join(clauses), pageSize=limit,
-                                fields=f"files({_FIELDS})", orderBy="modifiedTime desc",
-                                supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+    res = (
+        _drive()
+        .files()
+        .list(
+            q=" and ".join(clauses),
+            pageSize=limit,
+            fields=f"files({_FIELDS})",
+            orderBy="modifiedTime desc",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
+        .execute()
+    )
     return res.get("files", [])
 
 
 def get_file_metadata(file_id: str) -> dict:
-    return _drive().files().get(fileId=file_id, fields=_FIELDS,
-                                supportsAllDrives=True).execute()
+    return _drive().files().get(fileId=file_id, fields=_FIELDS, supportsAllDrives=True).execute()
 
 
 def _download(request) -> bytes:
     from googleapiclient.http import MediaIoBaseDownload
+
     buf = io.BytesIO()
     downloader = MediaIoBaseDownload(buf, request)
     done = False
@@ -103,12 +117,18 @@ def read_file(file_id: str, max_chars: int = 20000) -> dict:
     text = ""
     if mime in _EXPORTS:
         text = _download(files.export_media(fileId=file_id, mimeType=_EXPORTS[mime])).decode(
-            "utf-8", errors="replace")
+            "utf-8", errors="replace"
+        )
     elif mime == "application/pdf":
         from pypdf import PdfReader
+
         reader = PdfReader(io.BytesIO(_download(files.get_media(fileId=file_id))))
         text = "\n\n".join((p.extract_text() or "") for p in reader.pages)
     elif mime.startswith(_TEXT_MIMES):
         text = _download(files.get_media(fileId=file_id)).decode("utf-8", errors="replace")
-    return {**meta, "text": text[:max_chars], "truncated": len(text) > max_chars,
-            "readable": bool(text)}
+    return {
+        **meta,
+        "text": text[:max_chars],
+        "truncated": len(text) > max_chars,
+        "readable": bool(text),
+    }

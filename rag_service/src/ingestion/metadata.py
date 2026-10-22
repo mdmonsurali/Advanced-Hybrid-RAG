@@ -26,8 +26,13 @@ log = logging.getLogger("rag_service.metadata")
 # How much of the document the metadata call sees.
 META_SAMPLE_CHARS = int(os.getenv("RAG_META_SAMPLE_CHARS", "4000"))
 
-_EXT_TYPES = {".pdf": "pdf", ".docx": "document", ".png": "image", ".jpg": "image",
-              ".jpeg": "image"}
+_EXT_TYPES = {
+    ".pdf": "pdf",
+    ".docx": "document",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+}
 
 
 def _sample(chunks: list[RawChunk]) -> str:
@@ -45,9 +50,13 @@ def _heuristic(meta: dict, chunks: list[RawChunk]) -> dict:
     name = meta.get("original_name") or ""
     topic = next((c.headings[-1] for c in chunks if c.headings), Path(name).stem)
     summary = (chunks[0].text[:300] + "…") if chunks else ""
-    return {"doc_type": _EXT_TYPES.get(Path(name).suffix.lower(), "other"),
-            "topic": topic[:120], "summary": summary, "language": "und",
-            "metadata_source": "heuristic"}
+    return {
+        "doc_type": _EXT_TYPES.get(Path(name).suffix.lower(), "other"),
+        "topic": topic[:120],
+        "summary": summary,
+        "language": "und",
+        "metadata_source": "heuristic",
+    }
 
 
 async def document_metadata(meta: dict, chunks: list[RawChunk]) -> dict:

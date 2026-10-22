@@ -24,8 +24,9 @@ from prompts import registry
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--update", action="store_true",
-                        help="publish changed local texts as new versions")
+    parser.add_argument(
+        "--update", action="store_true", help="publish changed local texts as new versions"
+    )
     parser.add_argument("--label", default="production", help="label to compare with and set")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -47,13 +48,27 @@ def main() -> int:
             log.info("%-22s unchanged (v%d)", name, current.version)
             continue
         if current is not None and not args.update:
-            log.info("%-22s differs from %s v%d (use --update to publish)", name, args.label,
-                     current.version)
+            log.info(
+                "%-22s differs from %s v%d (use --update to publish)",
+                name,
+                args.label,
+                current.version,
+            )
             continue
-        created = lf.create_prompt(name=name, prompt=local, type="text", labels=[args.label],
-                                   commit_message="Published from llm_service/src/prompts")
-        log.info("%-22s %s v%d (%s)", name, "updated to" if current else "created", created.version,
-                 args.label)
+        created = lf.create_prompt(
+            name=name,
+            prompt=local,
+            type="text",
+            labels=[args.label],
+            commit_message="Published from llm_service/src/prompts",
+        )
+        log.info(
+            "%-22s %s v%d (%s)",
+            name,
+            "updated to" if current else "created",
+            created.version,
+            args.label,
+        )
     lf.flush()
     return 0
 

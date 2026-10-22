@@ -35,35 +35,57 @@ def _external_candidates(external: list[Evidence], question: str) -> list[tuple[
     for ev in external:
         pieces = chunk_text(ev.text) or [ev.text]
         for i, piece in enumerate(pieces):
-            out.append((ev.model_copy(update={"id": f"{ev.id}:{i}", "route": "mcp",
-                                              "text": piece, "chunk_index": i}), question))
+            out.append(
+                (
+                    ev.model_copy(
+                        update={
+                            "id": f"{ev.id}:{i}",
+                            "route": "mcp",
+                            "text": piece,
+                            "chunk_index": i,
+                        }
+                    ),
+                    question,
+                )
+            )
     return out
 
 
-async def execute(plan: QueryPlan, routes: list[str], identity: Identity,
-                  broaden: bool = False,
-                  external: list[Evidence] | None = None,
-                  debug: bool = False) -> RetrieveResponse:
+async def execute(
+    plan: QueryPlan,
+    routes: list[str],
+    identity: Identity,
+    broaden: bool = False,
+    external: list[Evidence] | None = None,
+    debug: bool = False,
+) -> RetrieveResponse:
     status: dict[str, str] = {}
     per_route: dict[str, int] = {}
     candidates: list[tuple[Evidence, str]] = []
     passthrough: list[Evidence] = []
 
     async def _docs():
-        with tracing.observe("search-docs", as_type="retriever",
-                             input={"queries": len(plan.sub_questions) or 1, "broaden": broaden}) as obs:
+        with tracing.observe(
+            "search-docs",
+            as_type="retriever",
+            input={"queries": len(plan.sub_questions) or 1, "broaden": broaden},
+        ) as obs:
             res = await search_docs(plan, identity, broaden)
             obs.update(output=tracing.hits([ev for ev, _ in res]))
             return res
 
     async def _gdrive():
-        with tracing.observe("gdrive", as_type="tool", input={"question": plan.standalone_question}) as obs:
+        with tracing.observe(
+            "gdrive", as_type="tool", input={"question": plan.standalone_question}
+        ) as obs:
             res = [(ev, plan.standalone_question) for ev in await gdrive_evidence(plan)]
             obs.update(output=tracing.hits([ev for ev, _ in res]))
             return res
 
     async def _web():
-        with tracing.observe("web-search", as_type="tool", input={"question": plan.standalone_question}) as obs:
+        with tracing.observe(
+            "web-search", as_type="tool", input={"question": plan.standalone_question}
+        ) as obs:
             res = [(ev, plan.standalone_question) for ev in await web_evidence(plan)]
             obs.update(output=tracing.hits([ev for ev, _ in res]))
             return res
@@ -103,7 +125,12 @@ async def execute(plan: QueryPlan, routes: list[str], identity: Identity,
     return RetrieveResponse(
         evidence=evidence,
         route_status=status,
-        candidates=(sorted((ev for ev, _ in candidates), key=lambda e: e.score, reverse=True)[:150]
-                    if debug else []),
-        stats=RetrieveStats(candidates=len(candidates), reranked=len(reranked), per_route=per_route),
+        candidates=(
+            sorted((ev for ev, _ in candidates), key=lambda e: e.score, reverse=True)[:150]
+            if debug
+            else []
+        ),
+        stats=RetrieveStats(
+            candidates=len(candidates), reranked=len(reranked), per_route=per_route
+        ),
     )

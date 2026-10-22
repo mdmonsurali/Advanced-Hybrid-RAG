@@ -51,8 +51,7 @@ class LLMOutputError(RuntimeError):
 def _get_client() -> AsyncOpenAI:
     global _client, _sem
     if _client is None:
-        _client = AsyncOpenAI(base_url=f"{SGLANG_URL}/v1", api_key="EMPTY",
-                              timeout=LLM_TIMEOUT)
+        _client = AsyncOpenAI(base_url=f"{SGLANG_URL}/v1", api_key="EMPTY", timeout=LLM_TIMEOUT)
         _sem = asyncio.Semaphore(max(1, LLM_CONCURRENCY))
     return _client
 
@@ -62,8 +61,10 @@ def _langfuse_kwargs(messages: list[dict], name: str | None, attempt: int = 1) -
     Message lists built by prompts/ carry the prompt they were compiled from."""
     prompt = getattr(messages, "prompt", None)
     prompt_name = getattr(messages, "prompt_name", None)
-    out: dict = {"name": name or (prompt_name or "llm").removeprefix("rag/"),
-                 "metadata": {"llm_model": LLM_MODEL, "attempt": attempt}}
+    out: dict = {
+        "name": name or (prompt_name or "llm").removeprefix("rag/"),
+        "metadata": {"llm_model": LLM_MODEL, "attempt": attempt},
+    }
     if prompt is not None:
         out["langfuse_prompt"] = prompt
     return out
@@ -77,8 +78,13 @@ def _clean(text: str) -> str:
     return text
 
 
-async def chat_text(messages: list[dict], *, temperature: float = 0.0,
-                    max_tokens: int = 1024, name: str | None = None) -> str:
+async def chat_text(
+    messages: list[dict],
+    *,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    name: str | None = None,
+) -> str:
     client = _get_client()
     assert _sem is not None
     async with _sem:
@@ -93,9 +99,14 @@ async def chat_text(messages: list[dict], *, temperature: float = 0.0,
     return _clean(resp.choices[0].message.content or "")
 
 
-async def chat_json(messages: list[dict], schema: Type[T], *,
-                    temperature: float = 0.0, max_tokens: int = 1024,
-                    name: str | None = None) -> T:
+async def chat_json(
+    messages: list[dict],
+    schema: Type[T],
+    *,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    name: str | None = None,
+) -> T:
     """Grammar-constrained JSON call parsed into `schema`. Retries once at a
     slightly higher temperature before giving up."""
     client = _get_client()
@@ -121,8 +132,12 @@ async def chat_json(messages: list[dict], schema: Type[T], *,
             return schema.model_validate_json(raw)
         except ValidationError as e:
             last_err = e
-            log.warning("[llm] %s output invalid (attempt %d): %s",
-                        schema.__name__, attempt + 1, str(e)[:300])
+            log.warning(
+                "[llm] %s output invalid (attempt %d): %s",
+                schema.__name__,
+                attempt + 1,
+                str(e)[:300],
+            )
     raise LLMOutputError(f"{schema.__name__}: {last_err}")
 
 
@@ -133,6 +148,7 @@ def count_tokens(text: str) -> int:
     if _tokenizer is None:
         try:
             from transformers import AutoTokenizer
+
             _tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL)
         except Exception as e:  # pragma: no cover - only when weights are absent
             log.warning("[llm] tokenizer unavailable (%s); estimating tokens", e)

@@ -22,8 +22,11 @@ PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
 # Same environment as the traces, so environment filters keep the scores.
 ENVIRONMENT = os.getenv("LANGFUSE_TRACING_ENVIRONMENT", "default")
-ENABLED = (os.getenv("LANGFUSE_TRACING_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-           and bool(PUBLIC_KEY) and bool(SECRET_KEY))
+ENABLED = (
+    os.getenv("LANGFUSE_TRACING_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    and bool(PUBLIC_KEY)
+    and bool(SECRET_KEY)
+)
 TIMEOUT = httpx.Timeout(5.0)
 
 SCORE_NAME = "user_feedback"
@@ -32,8 +35,15 @@ SCORE_NAME = "user_feedback"
 async def send(score_id: str, trace_id: str | None, value: int, comment: str | None) -> None:
     if not ENABLED or not trace_id:
         return
-    body = {"id": score_id, "traceId": trace_id, "name": SCORE_NAME, "value": 1 if value else 0,
-            "dataType": "BOOLEAN", "comment": comment or None, "environment": ENVIRONMENT}
+    body = {
+        "id": score_id,
+        "traceId": trace_id,
+        "name": SCORE_NAME,
+        "value": 1 if value else 0,
+        "dataType": "BOOLEAN",
+        "comment": comment or None,
+        "environment": ENVIRONMENT,
+    }
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, auth=(PUBLIC_KEY, SECRET_KEY)) as client:
             resp = await client.post(f"{BASE_URL}/api/public/scores", json=body)

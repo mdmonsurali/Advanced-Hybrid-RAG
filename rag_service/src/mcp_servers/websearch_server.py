@@ -25,7 +25,9 @@ mcp = FastMCP(
 async def search(
     query: Annotated[str, Field(description="Search query")],
     limit: Annotated[int, Field(ge=1, le=10, description="Number of results")] = 5,
-    recency_days: Annotated[Optional[int], Field(ge=1, description="Only results from the last N days")] = None,
+    recency_days: Annotated[
+        Optional[int], Field(ge=1, description="Only results from the last N days")
+    ] = None,
 ) -> list[dict]:
     """Search the web. Returns [{title, url, snippet, published}]."""
     return await asyncio.to_thread(providers.search, query, limit, recency_days)

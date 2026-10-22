@@ -19,8 +19,8 @@ WEBSEARCH_PROVIDER = os.getenv("WEBSEARCH_PROVIDER", "ddgs").strip().lower()
 WEBSEARCH_API_KEY = os.getenv("WEBSEARCH_API_KEY", "")
 WEBSEARCH_TIMEOUT = float(os.getenv("WEBSEARCH_TIMEOUT", "15"))
 FETCH_USER_AGENT = os.getenv(
-    "WEBSEARCH_USER_AGENT",
-    "Mozilla/5.0 (compatible; AdvancedHybridRAG/1.0; +https://github.com/)")
+    "WEBSEARCH_USER_AGENT", "Mozilla/5.0 (compatible; AdvancedHybridRAG/1.0; +https://github.com/)"
+)
 
 
 def _timelimit(recency_days: int | None) -> str | None:
@@ -37,21 +37,39 @@ def _timelimit(recency_days: int | None) -> str | None:
 
 def _ddgs(query: str, limit: int, recency_days: int | None) -> list[dict]:
     from ddgs import DDGS
+
     hits = DDGS().text(query, max_results=limit, timelimit=_timelimit(recency_days))
-    return [{"title": h.get("title", ""), "url": h.get("href", ""),
-             "snippet": h.get("body", ""), "published": h.get("date")} for h in hits]
+    return [
+        {
+            "title": h.get("title", ""),
+            "url": h.get("href", ""),
+            "snippet": h.get("body", ""),
+            "published": h.get("date"),
+        }
+        for h in hits
+    ]
 
 
 def _tavily(query: str, limit: int, recency_days: int | None) -> list[dict]:
     body = {"query": query, "max_results": limit}
     if recency_days:
         body["days"] = recency_days
-    resp = httpx.post("https://api.tavily.com/search", json=body, timeout=WEBSEARCH_TIMEOUT,
-                      headers={"Authorization": f"Bearer {WEBSEARCH_API_KEY}"})
+    resp = httpx.post(
+        "https://api.tavily.com/search",
+        json=body,
+        timeout=WEBSEARCH_TIMEOUT,
+        headers={"Authorization": f"Bearer {WEBSEARCH_API_KEY}"},
+    )
     resp.raise_for_status()
-    return [{"title": r.get("title", ""), "url": r.get("url", ""),
-             "snippet": r.get("content", ""), "published": r.get("published_date")}
-            for r in resp.json().get("results", [])]
+    return [
+        {
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "snippet": r.get("content", ""),
+            "published": r.get("published_date"),
+        }
+        for r in resp.json().get("results", [])
+    ]
 
 
 def _brave(query: str, limit: int, recency_days: int | None) -> list[dict]:
@@ -59,21 +77,34 @@ def _brave(query: str, limit: int, recency_days: int | None) -> list[dict]:
     freshness = {"d": "pd", "w": "pw", "m": "pm", "y": "py"}.get(_timelimit(recency_days) or "")
     if freshness:
         params["freshness"] = freshness
-    resp = httpx.get("https://api.search.brave.com/res/v1/web/search", params=params,
-                     timeout=WEBSEARCH_TIMEOUT,
-                     headers={"X-Subscription-Token": WEBSEARCH_API_KEY,
-                              "Accept": "application/json"})
+    resp = httpx.get(
+        "https://api.search.brave.com/res/v1/web/search",
+        params=params,
+        timeout=WEBSEARCH_TIMEOUT,
+        headers={"X-Subscription-Token": WEBSEARCH_API_KEY, "Accept": "application/json"},
+    )
     resp.raise_for_status()
-    return [{"title": r.get("title", ""), "url": r.get("url", ""),
-             "snippet": r.get("description", ""), "published": r.get("page_age")}
-            for r in resp.json().get("web", {}).get("results", [])]
+    return [
+        {
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "snippet": r.get("description", ""),
+            "published": r.get("page_age"),
+        }
+        for r in resp.json().get("web", {}).get("results", [])
+    ]
 
 
 _PROVIDERS = {"ddgs": _ddgs, "tavily": _tavily, "brave": _brave}
 
 # Sponsored-result redirectors some engines mix into organic results.
-_AD_MARKERS = ("bing.com/aclick", "duckduckgo.com/y.js", "googleadservices.com",
-               "doubleclick.net", "/aclk?")
+_AD_MARKERS = (
+    "bing.com/aclick",
+    "duckduckgo.com/y.js",
+    "googleadservices.com",
+    "doubleclick.net",
+    "/aclk?",
+)
 
 
 def _is_ad(url: str) -> bool:
@@ -86,8 +117,9 @@ def search(query: str, limit: int = 5, recency_days: int | None = None) -> list[
         raise ValueError(f"Unknown WEBSEARCH_PROVIDER: {WEBSEARCH_PROVIDER}")
     if WEBSEARCH_PROVIDER != "ddgs" and not WEBSEARCH_API_KEY:
         raise RuntimeError(f"WEBSEARCH_API_KEY is required for {WEBSEARCH_PROVIDER}")
-    return [r for r in provider(query, limit, recency_days)
-            if r["url"] and not _is_ad(r["url"])][:limit]
+    return [r for r in provider(query, limit, recency_days) if r["url"] and not _is_ad(r["url"])][
+        :limit
+    ]
 
 
 def _assert_public(url: str) -> None:
@@ -108,17 +140,20 @@ def _assert_public(url: str) -> None:
 
 def fetch_page(url: str, max_chars: int = 15000) -> dict:
     import trafilatura
+
     _assert_public(url)
-    with httpx.Client(timeout=WEBSEARCH_TIMEOUT, follow_redirects=False,
-                      headers={"User-Agent": FETCH_USER_AGENT}) as client:
+    with httpx.Client(
+        timeout=WEBSEARCH_TIMEOUT, follow_redirects=False, headers={"User-Agent": FETCH_USER_AGENT}
+    ) as client:
         resp = client.get(url)
-        for _ in range(5):                    # follow redirects, re-checking each hop
+        for _ in range(5):  # follow redirects, re-checking each hop
             if not resp.is_redirect:
                 break
             url = str(resp.next_request.url)
             _assert_public(url)
             resp = client.get(url)
     resp.raise_for_status()
-    text = trafilatura.extract(resp.text, url=url, include_tables=True,
-                               include_comments=False) or ""
+    text = (
+        trafilatura.extract(resp.text, url=url, include_tables=True, include_comments=False) or ""
+    )
     return {"url": str(resp.url), "text": text[:max_chars], "truncated": len(text) > max_chars}
