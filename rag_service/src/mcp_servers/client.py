@@ -23,7 +23,9 @@ log = logging.getLogger("rag_service.mcp_client")
 
 RAG_SERVICE_PORT = os.getenv("RAG_SERVICE_PORT", "8003")
 GDRIVE_MCP_URL = os.getenv("GDRIVE_MCP_URL", f"http://127.0.0.1:{RAG_SERVICE_PORT}/mcp/gdrive/")
-WEBSEARCH_MCP_URL = os.getenv("WEBSEARCH_MCP_URL", f"http://127.0.0.1:{RAG_SERVICE_PORT}/mcp/websearch/")
+WEBSEARCH_MCP_URL = os.getenv(
+    "WEBSEARCH_MCP_URL", f"http://127.0.0.1:{RAG_SERVICE_PORT}/mcp/websearch/"
+)
 MCP_TOKEN = os.getenv("MCP_TOKEN", "")
 MCP_TIMEOUT_SEC = float(os.getenv("MCP_TIMEOUT_SEC", "20"))
 GDRIVE_MAX_FILES = int(os.getenv("GDRIVE_MAX_FILES", "3"))
@@ -57,13 +59,18 @@ def _search_terms(plan: QueryPlan) -> str:
 
 
 def _chunks_to_evidence(prefix: str, text: str, **fields) -> list[Evidence]:
-    return [Evidence(id=f"{prefix}:{i}", text=chunk, chunk_index=i, **fields)
-            for i, chunk in enumerate(chunk_text(text))]
+    return [
+        Evidence(id=f"{prefix}:{i}", text=chunk, chunk_index=i, **fields)
+        for i, chunk in enumerate(chunk_text(text))
+    ]
 
 
 async def gdrive_evidence(plan: QueryPlan) -> list[Evidence]:
-    files = await call_tool(GDRIVE_MCP_URL, "search_files",
-                            {"query": _search_terms(plan), "limit": GDRIVE_MAX_FILES * 2})
+    files = await call_tool(
+        GDRIVE_MCP_URL,
+        "search_files",
+        {"query": _search_terms(plan), "limit": GDRIVE_MAX_FILES * 2},
+    )
     files = list(files or [])[:GDRIVE_MAX_FILES]
 
     async def _read(f: dict) -> list[Evidence]:
@@ -75,9 +82,14 @@ async def gdrive_evidence(plan: QueryPlan) -> list[Evidence]:
         if not doc or not doc.get("text"):
             return []
         return _chunks_to_evidence(
-            f"gdrive:{f['id']}", doc["text"], route="gdrive",
-            source=f.get("name", "Google Drive file"), url=f.get("webViewLink"),
-            date=f.get("modifiedTime"), owned=True)
+            f"gdrive:{f['id']}",
+            doc["text"],
+            route="gdrive",
+            source=f.get("name", "Google Drive file"),
+            url=f.get("webViewLink"),
+            date=f.get("modifiedTime"),
+            owned=True,
+        )
 
     groups = await asyncio.gather(*(_read(f) for f in files))
     return [ev for g in groups for ev in g]
@@ -85,13 +97,20 @@ async def gdrive_evidence(plan: QueryPlan) -> list[Evidence]:
 
 async def web_evidence(plan: QueryPlan) -> list[Evidence]:
     query = plan.rewritten or plan.standalone_question
-    results = list(await call_tool(WEBSEARCH_MCP_URL, "search",
-                                   {"query": query, "limit": WEB_MAX_PAGES + 2}) or [])
+    results = list(
+        await call_tool(WEBSEARCH_MCP_URL, "search", {"query": query, "limit": WEB_MAX_PAGES + 2})
+        or []
+    )
 
     async def _page(r: dict) -> list[Evidence]:
         key = hashlib.sha1(r["url"].encode()).hexdigest()[:12]
-        fields = dict(route="web", source=r.get("title") or r["url"], url=r["url"],
-                      date=r.get("published"), owned=False)
+        fields = dict(
+            route="web",
+            source=r.get("title") or r["url"],
+            url=r["url"],
+            date=r.get("published"),
+            owned=False,
+        )
         try:
             page = await call_tool(WEBSEARCH_MCP_URL, "fetch_page", {"url": r["url"]})
             text = (page or {}).get("text") or ""

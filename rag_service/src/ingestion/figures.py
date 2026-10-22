@@ -23,7 +23,7 @@ from pathlib import PurePath
 
 import httpx
 from docling_core.types.doc import DoclingDocument, PictureItem
-from PIL import Image          # installed with sentence-transformers
+from PIL import Image  # installed with sentence-transformers
 
 import llm_api
 import storage
@@ -100,11 +100,15 @@ async def describe(doc_id: str, doc: DoclingDocument) -> tuple[dict[str, str], s
             log.warning("[figures] %s: unreadable crop %s: %s", doc_id, pic.image.uri, e)
             continue
         try:
-            resp = await llm_api.describe_figure(b64, mime, pic.caption_text(doc).strip(),
-                                                 preceding_paragraph(doc, pic) or "")
+            resp = await llm_api.describe_figure(
+                b64, mime, pic.caption_text(doc).strip(), preceding_paragraph(doc, pic) or ""
+            )
         except httpx.HTTPError as e:
-            log.warning("[figures] %s: describing figures unavailable, indexing captions only: %s",
-                        doc_id, e)
+            log.warning(
+                "[figures] %s: describing figures unavailable, indexing captions only: %s",
+                doc_id,
+                e,
+            )
             status = "unavailable"
             continue
         description = (resp.get("description") or "").strip()
@@ -116,6 +120,12 @@ async def describe(doc_id: str, doc: DoclingDocument) -> tuple[dict[str, str], s
 
     if called:
         await storage.put_figure_cache(doc_id, cache)
-    log.info("[figures] %s: %d/%d figures described (%d new, status=%s)",
-             doc_id, sum(1 for d in out.values() if d), len(pictures), called, status)
+    log.info(
+        "[figures] %s: %d/%d figures described (%d new, status=%s)",
+        doc_id,
+        sum(1 for d in out.values() if d),
+        len(pictures),
+        called,
+        status,
+    )
     return out, status

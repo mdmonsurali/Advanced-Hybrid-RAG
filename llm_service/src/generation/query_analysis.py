@@ -25,8 +25,9 @@ _NO_TRANSFORM_INTENTS = {"chitchat", "catalog"}
 
 
 async def analyze(question: str, history: list[Turn]) -> QueryPlan:
-    understanding = await chat_json(understanding_messages(question, history),
-                                    UnderstandingOutput, max_tokens=512)
+    understanding = await chat_json(
+        understanding_messages(question, history), UnderstandingOutput, max_tokens=512
+    )
     # An ambiguous question with nothing concrete to search for goes straight
     # back to the user; anything else is answerable enough to try.
     if understanding.ambiguous and understanding.entities:
@@ -38,16 +39,24 @@ async def analyze(question: str, history: list[Turn]) -> QueryPlan:
         transformation = TransformationOutput(rewritten=understanding.standalone_question)
     else:
         transformation = await chat_json(
-            transform_messages(understanding.standalone_question,
-                               understanding.intent, understanding.entities),
-            TransformationOutput, temperature=0.2, max_tokens=768,
+            transform_messages(
+                understanding.standalone_question, understanding.intent, understanding.entities
+            ),
+            TransformationOutput,
+            temperature=0.2,
+            max_tokens=768,
         )
         if understanding.intent != "comparison" and len(transformation.sub_questions) == 1:
             transformation.sub_questions = []
 
     plan = QueryPlan(**understanding.model_dump(), **transformation.model_dump())
-    log.info("[plan] intent=%s subq=%d ambiguous=%s q=%r", plan.intent,
-             len(plan.sub_questions), plan.ambiguous, plan.standalone_question[:120])
+    log.info(
+        "[plan] intent=%s subq=%d ambiguous=%s q=%r",
+        plan.intent,
+        len(plan.sub_questions),
+        plan.ambiguous,
+        plan.standalone_question[:120],
+    )
     return plan
 
 
@@ -60,7 +69,6 @@ async def route(plan: QueryPlan, available: list[Route]) -> RouteOutput:
 
 
 async def doc_metadata(name: str, text: str) -> DocMetadataOutput:
-    out = await chat_json(doc_metadata_messages(name, text), DocMetadataOutput,
-                          max_tokens=384)
+    out = await chat_json(doc_metadata_messages(name, text), DocMetadataOutput, max_tokens=384)
     out.doc_type = out.doc_type.strip().lower() or "other"
     return out

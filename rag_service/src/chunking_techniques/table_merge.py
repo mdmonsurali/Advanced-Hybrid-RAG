@@ -52,8 +52,12 @@ def _ignorable(doc: DoclingDocument, item, head: TableItem) -> bool:
     if getattr(item, "label", None) in _IGNORABLE_LABELS:
         return True
     last = head.prov[-1] if head.prov else None
-    return (last is not None and len(item.prov or []) == 1 and item.prov[0].page_no == last.page_no
-            and _top(doc, item.prov[0]) < _top(doc, head.prov[-1]))
+    return (
+        last is not None
+        and len(item.prov or []) == 1
+        and item.prov[0].page_no == last.page_no
+        and _top(doc, item.prov[0]) < _top(doc, head.prov[-1])
+    )
 
 
 def _row_texts(table: TableItem, row: int) -> list[str]:
@@ -82,11 +86,14 @@ def _rows_to_skip(head: TableItem, cont: TableItem) -> int:
 
 def _is_continuation(head: TableItem, cont: TableItem) -> bool:
     head_pages, cont_pages = _pages(head), _pages(cont)
-    return (bool(head_pages) and bool(cont_pages)
-            and min(cont_pages) == max(head_pages) + 1
-            and cont.data.num_cols == head.data.num_cols
-            and not cont.captions
-            and not any(isinstance(c, RichTableCell) for c in cont.data.table_cells))
+    return (
+        bool(head_pages)
+        and bool(cont_pages)
+        and min(cont_pages) == max(head_pages) + 1
+        and cont.data.num_cols == head.data.num_cols
+        and not cont.captions
+        and not any(isinstance(c, RichTableCell) for c in cont.data.table_cells)
+    )
 
 
 def _append(head: TableItem, cont: TableItem) -> None:
@@ -95,13 +102,17 @@ def _append(head: TableItem, cont: TableItem) -> None:
     for cell in cont.data.table_cells:
         if cell.start_row_offset_idx < skip:
             continue
-        head.data.table_cells.append(cell.model_copy(update={
-            "start_row_offset_idx": cell.start_row_offset_idx + offset,
-            "end_row_offset_idx": cell.end_row_offset_idx + offset,
-            # A continuation's "header" that doesn't repeat the real one is a
-            # data row TableFormer misread.
-            "column_header": False,
-        }))
+        head.data.table_cells.append(
+            cell.model_copy(
+                update={
+                    "start_row_offset_idx": cell.start_row_offset_idx + offset,
+                    "end_row_offset_idx": cell.end_row_offset_idx + offset,
+                    # A continuation's "header" that doesn't repeat the real one is a
+                    # data row TableFormer misread.
+                    "column_header": False,
+                }
+            )
+        )
     head.data.num_rows += cont.data.num_rows - skip
     head.prov.extend(cont.prov)
 
@@ -118,7 +129,7 @@ def merge_cross_page_tables(doc: DoclingDocument) -> RowPages:
     for item, _level in doc.iterate_items(with_groups=False):
         parent = item.parent.resolve(doc) if item.parent else None
         if isinstance(parent, (TableItem, PictureItem)):
-            continue                        # caption / footnote of a float
+            continue  # caption / footnote of a float
         if isinstance(item, TableItem):
             if head is not None and _is_continuation(head, item):
                 _, pages = starts.setdefault(id(head), (head, [(0, min(_pages(head)))]))
@@ -130,6 +141,6 @@ def merge_cross_page_tables(doc: DoclingDocument) -> RowPages:
         elif head is not None and not _ignorable(doc, item, head):
             head = None
     if merged:
-        doc.delete_items(node_items=merged)     # renumbers the remaining refs
+        doc.delete_items(node_items=merged)  # renumbers the remaining refs
         log.info("[chunk] merged %d cross-page table continuation(s)", len(merged))
     return {table.self_ref: pages for table, pages in starts.values()}

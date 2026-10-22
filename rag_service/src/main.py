@@ -51,7 +51,12 @@ for _noisy in ("httpx", "httpx2", "primp", "mcp", "fastmcp"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 MCP_TOKEN = os.getenv("MCP_TOKEN", "")
-SYNC_ON_STARTUP = os.getenv("RAG_SYNC_ON_STARTUP", "true").strip().lower() in {"1", "true", "yes", "on"}
+SYNC_ON_STARTUP = os.getenv("RAG_SYNC_ON_STARTUP", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 # ── MCP apps (FastMCP streamable HTTP, mounted under /mcp/*) ─────────────
@@ -71,7 +76,9 @@ class _BearerGuard:
             headers = dict(scope.get("headers") or [])
             supplied = headers.get(b"authorization", b"").decode()
             if not hmac.compare_digest(supplied, f"Bearer {MCP_TOKEN}"):
-                await JSONResponse({"detail": "invalid MCP token"}, status_code=401)(scope, receive, send)
+                await JSONResponse({"detail": "invalid MCP token"}, status_code=401)(
+                    scope, receive, send
+                )
                 return
         await self.app(scope, receive, send)
 
@@ -88,8 +95,11 @@ async def lifespan(app: FastAPI):
         await stack.enter_async_context(gdrive_mcp_app.lifespan(gdrive_mcp_app))
         await stack.enter_async_context(websearch_mcp_app.lifespan(websearch_mcp_app))
 
-        await asyncio.gather(asyncio.to_thread(dense.load), asyncio.to_thread(sparse.load),
-                             asyncio.to_thread(reranker.load))
+        await asyncio.gather(
+            asyncio.to_thread(dense.load),
+            asyncio.to_thread(sparse.load),
+            asyncio.to_thread(reranker.load),
+        )
         _ready["models"] = True
 
         qdrant_store.init_client()
@@ -106,7 +116,7 @@ async def lifespan(app: FastAPI):
             log.warning("MCP_TOKEN is empty: /mcp/* endpoints accept unauthenticated requests")
         log.info("rag_service ready")
         yield
-    tracing.shutdown()      # flush pending Langfuse spans
+    tracing.shutdown()  # flush pending Langfuse spans
 
 
 async def _startup_sync() -> None:
@@ -123,19 +133,21 @@ app.mount("/mcp/websearch", _BearerGuard(websearch_mcp_app))
 
 class _SilencePathsFilter(logging.Filter):
     """Drop uvicorn access lines for /health so the actual events show."""
+
     def __init__(self, paths: tuple[str, ...]) -> None:
         super().__init__()
         self._paths = paths
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not any(f' {p} ' in msg for p in self._paths)
+        return not any(f" {p} " in msg for p in self._paths)
 
 
 logging.getLogger("uvicorn.access").addFilter(_SilencePathsFilter(("/health",)))
 
 
 # ── Routes ───────────────────────────────────────────────────────────────
+
 
 @app.get("/health")
 async def health():
@@ -149,8 +161,13 @@ async def health():
         storage.health_minio()
     except Exception as e:
         raise HTTPException(503, f"minio not reachable: {e}")
-    return {"status": "ok", "qdrant": "ok", "minio": "ok", "models": "ok",
-            "indexed_documents": len(storage.REGISTRY)}
+    return {
+        "status": "ok",
+        "qdrant": "ok",
+        "minio": "ok",
+        "models": "ok",
+        "indexed_documents": len(storage.REGISTRY),
+    }
 
 
 @app.post("/ingest/sync")
@@ -191,15 +208,25 @@ async def index_entry(doc_id: str):
 
 @app.post("/route", response_model=RouteResponse)
 async def route(body: RouteRequest, request: Request, identity: Identity = Depends(require_user)):
-    with tracing.observe("route", headers=request.headers,
-                         input={"question": body.plan.standalone_question, "intent": body.plan.intent,
-                                "route_hint": body.route_hint, "deny_routes": body.deny_routes}) as obs:
-        return tracing.output(obs, await router.decide(body.plan, identity, body.route_hint,
-                                                       body.deny_routes))
+    with tracing.observe(
+        "route",
+        headers=request.headers,
+        input={
+            "question": body.plan.standalone_question,
+            "intent": body.plan.intent,
+            "route_hint": body.route_hint,
+            "deny_routes": body.deny_routes,
+        },
+    ) as obs:
+        return tracing.output(
+            obs, await router.decide(body.plan, identity, body.route_hint, body.deny_routes)
+        )
 
 
 @app.post("/retrieve", response_model=RetrieveResponse)
-async def retrieve(body: RetrieveRequest, request: Request, identity: Identity = Depends(require_user)):
+async def retrieve(
+    body: RetrieveRequest, request: Request, identity: Identity = Depends(require_user)
+):
     allowed = router.available_routes(identity) + ["mcp"]
     routes = [r for r in body.routes if r in allowed]
     if not routes and not body.external_evidence:
@@ -207,13 +234,31 @@ async def retrieve(body: RetrieveRequest, request: Request, identity: Identity =
     # Tool output comes from arbitrary servers: never treat it as the user's
     # own data, so validation keeps masking any PII it contains.
     external = [ev.model_copy(update={"owned": False}) for ev in body.external_evidence]
-    with tracing.observe("retrieve", as_type="retriever", headers=request.headers,
-                         input={"question": body.plan.standalone_question, "routes": routes,
-                                "sub_questions": body.plan.sub_questions,
-                                "external_evidence": len(external)},
-                         metadata={"broaden": body.broaden}) as obs:
-        res = await execute(body.plan, routes, identity, body.broaden, external,
-                            debug=body.debug and identity.role in {"admin", "master"})
-        obs.update(output={"route_status": res.route_status, "stats": res.stats.model_dump(),
-                           "evidence": tracing.hits(res.evidence)})
+    with tracing.observe(
+        "retrieve",
+        as_type="retriever",
+        headers=request.headers,
+        input={
+            "question": body.plan.standalone_question,
+            "routes": routes,
+            "sub_questions": body.plan.sub_questions,
+            "external_evidence": len(external),
+        },
+        metadata={"broaden": body.broaden},
+    ) as obs:
+        res = await execute(
+            body.plan,
+            routes,
+            identity,
+            body.broaden,
+            external,
+            debug=body.debug and identity.role in {"admin", "master"},
+        )
+        obs.update(
+            output={
+                "route_status": res.route_status,
+                "stats": res.stats.model_dump(),
+                "evidence": tracing.hits(res.evidence),
+            }
+        )
         return res

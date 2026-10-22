@@ -31,18 +31,28 @@ from schemas import QueryPlan, RouteResponse
 
 log = logging.getLogger("rag_service.router")
 
-WEBSEARCH_ENABLED = os.getenv("WEBSEARCH_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+WEBSEARCH_ENABLED = os.getenv("WEBSEARCH_ENABLED", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 GDRIVE_ENABLED = os.getenv("GDRIVE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 # The Drive MCP connects one Google account (the operator's), so only these
 # app roles may search it.
-GDRIVE_ALLOWED_ROLES = {r.strip() for r in os.getenv("GDRIVE_ALLOWED_ROLES", "master,admin").split(",")
-                        if r.strip()}
+GDRIVE_ALLOWED_ROLES = {
+    r.strip() for r in os.getenv("GDRIVE_ALLOWED_ROLES", "master,admin").split(",") if r.strip()
+}
 
-_DRIVE_RE = re.compile(r"\b(google\s*drive|g\s*drive|my\s+drive|google\s+(docs?|sheets?|slides?))\b",
-                       re.IGNORECASE)
-_WEB_RE = re.compile(r"\b(latest|news|today|tonight|yesterday|this\s+(week|month|year)|current(ly)?|"
-                     r"recent(ly)?|right\s+now|price\s+of|weather|on\s+the\s+(web|internet)|"
-                     r"search\s+(the\s+)?(web|online|internet)|online)\b", re.IGNORECASE)
+_DRIVE_RE = re.compile(
+    r"\b(google\s*drive|g\s*drive|my\s+drive|google\s+(docs?|sheets?|slides?))\b", re.IGNORECASE
+)
+_WEB_RE = re.compile(
+    r"\b(latest|news|today|tonight|yesterday|this\s+(week|month|year)|current(ly)?|"
+    r"recent(ly)?|right\s+now|price\s+of|weather|on\s+the\s+(web|internet)|"
+    r"search\s+(the\s+)?(web|online|internet)|online)\b",
+    re.IGNORECASE,
+)
 
 
 def available_routes(identity: Identity) -> list[str]:
@@ -69,19 +79,27 @@ def _rules(plan: QueryPlan, available: list[str]) -> tuple[list[str], str] | Non
     return None
 
 
-async def decide(plan: QueryPlan, identity: Identity, route_hint: list[str] | None = None,
-                 deny_routes: list[str] | None = None) -> RouteResponse:
+async def decide(
+    plan: QueryPlan,
+    identity: Identity,
+    route_hint: list[str] | None = None,
+    deny_routes: list[str] | None = None,
+) -> RouteResponse:
     deny = set(deny_routes or [])
     available = [r for r in available_routes(identity) if r not in deny]
     forced = [r for r in dict.fromkeys(route_hint or []) if r in available]
     if forced:
-        return RouteResponse(routes=forced, reason="route chosen by the user",
-                             decided_by="user", available=available)
+        return RouteResponse(
+            routes=forced, reason="route chosen by the user", decided_by="user", available=available
+        )
     if route_hint:
         # The requested route isn't permitted (or was switched off).
-        return RouteResponse(routes=["docs"],
-                             reason=f"{', '.join(route_hint)} not available; searching documents",
-                             decided_by="default", available=available)
+        return RouteResponse(
+            routes=["docs"],
+            reason=f"{', '.join(route_hint)} not available; searching documents",
+            decided_by="default",
+            available=available,
+        )
     ruled = _rules(plan, available)
     if ruled:
         routes, reason = ruled
@@ -89,9 +107,14 @@ async def decide(plan: QueryPlan, identity: Identity, route_hint: list[str] | No
     try:
         out = await llm_api.route(plan.model_dump(), available)
         routes = [r for r in out.get("routes", []) if r in available] or ["docs"]
-        return RouteResponse(routes=routes, reason=out.get("reason", ""), decided_by="llm",
-                             available=available)
+        return RouteResponse(
+            routes=routes, reason=out.get("reason", ""), decided_by="llm", available=available
+        )
     except httpx.HTTPError as e:
         log.warning("[route] llm routing failed, defaulting to docs: %s", e)
-        return RouteResponse(routes=["docs"], reason="default route (router LLM unavailable)",
-                             decided_by="default", available=available)
+        return RouteResponse(
+            routes=["docs"],
+            reason="default route (router LLM unavailable)",
+            decided_by="default",
+            available=available,
+        )

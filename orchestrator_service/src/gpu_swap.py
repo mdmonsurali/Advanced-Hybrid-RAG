@@ -42,7 +42,10 @@ from docker.errors import APIError, DockerException, NotFound
 log = logging.getLogger("orchestrator.gpu_swap")
 
 GPU_SWAP_ENABLED = os.environ.get("GPU_SWAP", "false").strip().lower() in {
-    "1", "true", "yes", "on",
+    "1",
+    "true",
+    "yes",
+    "on",
 }
 LLM_CONTAINER_NAME = os.environ.get("LLM_CONTAINER_NAME", "llm_service")
 OCR_SERVICE_URL = os.environ.get("OCR_SERVICE_URL", "http://ocr_service:8001")
@@ -71,6 +74,7 @@ def _get_client() -> docker.DockerClient:
 
 # ── Low-level state probes ────
 
+
 def _container_state(name: str) -> dict:
     """Return {"running": bool, "health": str|None} or {"exists": False}."""
     try:
@@ -80,8 +84,12 @@ def _container_state(name: str) -> dict:
     c.reload()
     state = c.attrs.get("State") or {}
     health = (state.get("Health") or {}).get("Status")
-    return {"exists": True, "running": state.get("Running", False),
-            "health": health, "status": state.get("Status")}
+    return {
+        "exists": True,
+        "running": state.get("Running", False),
+        "health": health,
+        "status": state.get("Status"),
+    }
 
 
 async def state(name: str) -> dict:
@@ -98,6 +106,7 @@ async def is_healthy(name: str) -> bool:
 
 
 # ── Lifecycle operations ────
+
 
 def _stop_sync(name: str, timeout: int) -> None:
     c = _get_client().containers.get(name)
@@ -137,8 +146,9 @@ async def start(name: str) -> None:
         raise
 
 
-async def wait_healthy(name: str, timeout_s: int = HEALTH_TIMEOUT_SEC,
-                       emit: Optional[EmitStatus] = None) -> None:
+async def wait_healthy(
+    name: str, timeout_s: int = HEALTH_TIMEOUT_SEC, emit: Optional[EmitStatus] = None
+) -> None:
     """Poll Inspect.State.Health.Status until 'healthy' or the deadline.
 
     If the container has no healthcheck, fall back to status=='running'.
@@ -154,7 +164,7 @@ async def wait_healthy(name: str, timeout_s: int = HEALTH_TIMEOUT_SEC,
         if h == "healthy":
             return
         if h is None and s.get("running"):
-            return      # no healthcheck declared: 'running' means ready
+            return  # no healthcheck declared: 'running' means ready
         if h == "unhealthy":
             raise RuntimeError(f"container {name} became unhealthy")
         if not s.get("running"):
@@ -162,15 +172,24 @@ async def wait_healthy(name: str, timeout_s: int = HEALTH_TIMEOUT_SEC,
 
         now = loop.time()
         if emit is not None and now - last_emit > 5:
-            await emit("status", {"phase": "waiting-healthy", "container": name,
-                                  "message": f"Waiting for {name} healthcheck ({h or 'starting'})"})
+            await emit(
+                "status",
+                {
+                    "phase": "waiting-healthy",
+                    "container": name,
+                    "message": f"Waiting for {name} healthcheck ({h or 'starting'})",
+                },
+            )
             last_emit = now
         if now >= deadline:
-            raise TimeoutError(f"{name} did not become healthy within {timeout_s}s (last health={h})")
+            raise TimeoutError(
+                f"{name} did not become healthy within {timeout_s}s (last health={h})"
+            )
         await asyncio.sleep(2)
 
 
 # ── OCR GPU worker (inside ocr_service) ────
+
 
 async def _ocr_gpu(action: str) -> None:
     timeout = OCR_ENABLE_TIMEOUT_SEC if action == "enable" else 120
@@ -184,14 +203,16 @@ async def _upgrade_heuristic_docs() -> None:
     """Re-index what was indexed while the LLM was off (fire-and-forget)."""
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(f"{RAG_SERVICE_URL}/ingest/sync",
-                                     params={"upgrade_heuristic": "true"})
+            resp = await client.post(
+                f"{RAG_SERVICE_URL}/ingest/sync", params={"upgrade_heuristic": "true"}
+            )
         log.info("[gpu_swap] rag upgrade sync -> %d %s", resp.status_code, resp.text[:200])
     except httpx.HTTPError as e:
         log.warning("[gpu_swap] rag upgrade sync failed: %s", e)
 
 
 # ── High-level swaps ──────
+
 
 async def _emit(emit: Optional[EmitStatus], payload: dict) -> None:
     if emit is not None:
@@ -201,9 +222,12 @@ async def _emit(emit: Optional[EmitStatus], payload: dict) -> None:
 async def swap_to_ocr(emit: Optional[EmitStatus] = None) -> None:
     """Stop the LLM container (frees its VRAM), then start the OCR GPU worker."""
     if await is_running(LLM_CONTAINER_NAME):
-        await _emit(emit, {"phase": "swap-to-ocr", "message": f"Stopping {LLM_CONTAINER_NAME} to free GPU VRAM"})
+        await _emit(
+            emit,
+            {"phase": "swap-to-ocr", "message": f"Stopping {LLM_CONTAINER_NAME} to free GPU VRAM"},
+        )
         await stop(LLM_CONTAINER_NAME)
-        await asyncio.sleep(3)      # let the driver release the context
+        await asyncio.sleep(3)  # let the driver release the context
     await _emit(emit, {"phase": "swap-to-ocr", "message": "Loading Docling models on the GPU"})
     await _ocr_gpu("enable")
     await _emit(emit, {"phase": "swap-to-ocr", "message": "OCR is ready"})
@@ -221,13 +245,19 @@ async def swap_to_llm(emit: Optional[EmitStatus] = None) -> None:
     if not await is_running(LLM_CONTAINER_NAME):
         await _emit(emit, {"phase": "swap-to-llm", "message": f"Starting {LLM_CONTAINER_NAME}"})
         await start(LLM_CONTAINER_NAME)
-    await _emit(emit, {"phase": "swap-to-llm",
-                       "message": "Waiting for the LLM healthcheck (SGLang cold start takes several minutes)"})
+    await _emit(
+        emit,
+        {
+            "phase": "swap-to-llm",
+            "message": "Waiting for the LLM healthcheck (SGLang cold start takes several minutes)",
+        },
+    )
     await wait_healthy(LLM_CONTAINER_NAME, emit=emit)
     await _emit(emit, {"phase": "swap-to-llm", "message": "LLM is ready"})
 
 
 # ── Arbiter: leases + swap decisions ──────
+
 
 @dataclass
 class _Lease:
@@ -237,8 +267,8 @@ class _Lease:
 
 class _Arbiter:
     def __init__(self) -> None:
-        self.tenant: Optional[str] = None   # who owns the GPU (None: unknown / failed)
-        self.ready = False                  # False while a swap runs
+        self.tenant: Optional[str] = None  # who owns the GPU (None: unknown / failed)
+        self.ready = False  # False while a swap runs
         self.swapping_to: Optional[str] = None
         self.message = "starting"
         self.error: Optional[str] = None
@@ -271,8 +301,11 @@ class _Arbiter:
             if self.waiting["ocr"] and not self.held("llm"):
                 return "ocr"
         elif self.tenant == "ocr":
-            if not self.held("ocr") and not self.waiting["ocr"] \
-                    and now - self.last_used["ocr"] >= IDLE_SEC:
+            if (
+                not self.held("ocr")
+                and not self.waiting["ocr"]
+                and now - self.last_used["ocr"] >= IDLE_SEC
+            ):
                 return "llm"
         return None
 
@@ -334,7 +367,7 @@ class _Arbiter:
     async def _run(self) -> None:
         try:
             await self._reconcile()
-        except Exception as e:      # keep the manager alive; the loop retries
+        except Exception as e:  # keep the manager alive; the loop retries
             log.exception("[gpu_swap] reconcile failed")
             self.tenant, self.ready, self.error = None, False, str(e)
         while True:
@@ -355,8 +388,9 @@ class _Arbiter:
                     pass
 
     # leases
-    async def acquire(self, tenant: str, ttl: float = LEASE_TTL_SEC,
-                      emit: Optional[EmitStatus] = None) -> str:
+    async def acquire(
+        self, tenant: str, ttl: float = LEASE_TTL_SEC, emit: Optional[EmitStatus] = None
+    ) -> str:
         if tenant not in TENANTS:
             raise ValueError(f"unknown tenant {tenant!r}")
         if not GPU_SWAP_ENABLED:
@@ -368,11 +402,18 @@ class _Arbiter:
             async with self._changed:
                 while not self._grantable(tenant):
                     # On change, and every 30 s as a heartbeat for streaming callers.
-                    if emit is not None and (self.message != last_msg
-                                             or time.monotonic() - last_emit > 30):
+                    if emit is not None and (
+                        self.message != last_msg or time.monotonic() - last_emit > 30
+                    ):
                         last_msg, last_emit = self.message, time.monotonic()
-                        await emit("status", {"phase": "waiting", "tenant": tenant,
-                                              "message": self._wait_message(tenant)})
+                        await emit(
+                            "status",
+                            {
+                                "phase": "waiting",
+                                "tenant": tenant,
+                                "message": self._wait_message(tenant),
+                            },
+                        )
                     try:
                         await asyncio.wait_for(self._changed.wait(), timeout=5)
                     except asyncio.TimeoutError:
@@ -386,7 +427,9 @@ class _Arbiter:
             await self._notify()
 
     def _wait_message(self, tenant: str) -> str:
-        if tenant == "llm" and (self.tenant == "ocr" or self.swapping_to == "ocr" or self.waiting["ocr"]):
+        if tenant == "llm" and (
+            self.tenant == "ocr" or self.swapping_to == "ocr" or self.waiting["ocr"]
+        ):
             return f"GPU busy with document ingestion; the LLM restarts when it finishes. {self.message}"
         return f"Waiting for the GPU ({tenant}): {self.message}"
 
@@ -407,10 +450,16 @@ class _Arbiter:
             await self._notify()
 
     def status(self) -> dict:
-        return {"tenant": self.tenant, "ready": self.ready, "swapping_to": self.swapping_to,
-                "message": self.message, "error": self.error,
-                "leases": {t: self.held(t) for t in TENANTS},
-                "waiting": dict(self.waiting), "idle_sec": IDLE_SEC}
+        return {
+            "tenant": self.tenant,
+            "ready": self.ready,
+            "swapping_to": self.swapping_to,
+            "message": self.message,
+            "error": self.error,
+            "leases": {t: self.held(t) for t in TENANTS},
+            "waiting": dict(self.waiting),
+            "idle_sec": IDLE_SEC,
+        }
 
 
 arbiter = _Arbiter()
@@ -442,6 +491,7 @@ async def wait_lease(tenant: str) -> AsyncIterator[tuple[str, dict]]:
 @asynccontextmanager
 async def renewing(lease_id: str) -> AsyncIterator[str]:
     """Keep a lease alive while the body runs, release it afterwards."""
+
     async def _renew() -> None:
         while True:
             await asyncio.sleep(LEASE_TTL_SEC / 3)
@@ -466,6 +516,7 @@ async def lease(tenant: str, emit: Optional[EmitStatus] = None) -> AsyncIterator
 
 # ── Read-only snapshot for /gpu/status ──────
 
+
 async def snapshot() -> dict:
     out = {"gpu_swap_enabled": GPU_SWAP_ENABLED}
     if not GPU_SWAP_ENABLED:
@@ -474,9 +525,15 @@ async def snapshot() -> dict:
         llm = await state(LLM_CONTAINER_NAME)
     except DockerException as e:
         llm = {"error": str(e)}
-    return {**out, **arbiter.status(),
-            "llm": {"name": LLM_CONTAINER_NAME, "running": llm.get("running", False),
-                    "health": llm.get("health")}}
+    return {
+        **out,
+        **arbiter.status(),
+        "llm": {
+            "name": LLM_CONTAINER_NAME,
+            "running": llm.get("running", False),
+            "health": llm.get("health"),
+        },
+    }
 
 
 def docker_reachable() -> bool:

@@ -36,11 +36,17 @@ def load() -> None:
     if _model is None:
         import torch
         from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer(EMBED_MODEL, device=EMBED_DEVICE,
-                                     model_kwargs={"dtype": getattr(torch, EMBED_DTYPE)})
+
+        _model = SentenceTransformer(
+            EMBED_MODEL, device=EMBED_DEVICE, model_kwargs={"dtype": getattr(torch, EMBED_DTYPE)}
+        )
         _model.max_seq_length = min(EMBED_MAX_SEQ, _model.max_seq_length or EMBED_MAX_SEQ)
-        log.info("dense model ready: %s (dim=%d, query prompt=%s)", EMBED_MODEL, dim(),
-                 "query" in (_model.prompts or {}))
+        log.info(
+            "dense model ready: %s (dim=%d, query prompt=%s)",
+            EMBED_MODEL,
+            dim(),
+            "query" in (_model.prompts or {}),
+        )
 
 
 def is_ready() -> bool:
@@ -49,8 +55,9 @@ def is_ready() -> bool:
 
 def dim() -> int:
     assert _model is not None, "dense.load() not called"
-    getter = (getattr(_model, "get_embedding_dimension", None)
-              or _model.get_sentence_embedding_dimension)
+    getter = (
+        getattr(_model, "get_embedding_dimension", None) or _model.get_sentence_embedding_dimension
+    )
     return int(getter())
 
 
@@ -67,9 +74,14 @@ def _encode(texts: list[str], prompt_name: str | None) -> list[list[float]]:
     if prompt_name not in (_model.prompts or {}):
         prompt_name = None
     with _lock:
-        vecs = _model.encode(texts, batch_size=EMBED_BATCH, normalize_embeddings=True,
-                             convert_to_numpy=True, show_progress_bar=False,
-                             prompt_name=prompt_name)
+        vecs = _model.encode(
+            texts,
+            batch_size=EMBED_BATCH,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+            prompt_name=prompt_name,
+        )
     return vecs.tolist()
 
 

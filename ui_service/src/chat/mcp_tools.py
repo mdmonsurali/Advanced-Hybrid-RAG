@@ -31,8 +31,12 @@ SESSION_KEY = "mcp_tools"
 
 
 def _tool_dict(server: str, tool) -> dict:
-    return {"server": server, "name": tool.name, "description": tool.description or "",
-            "input_schema": getattr(tool, "inputSchema", None) or {}}
+    return {
+        "server": server,
+        "name": tool.name,
+        "description": tool.description or "",
+        "input_schema": getattr(tool, "inputSchema", None) or {},
+    }
 
 
 async def on_connect(connection, session) -> None:
@@ -42,8 +46,10 @@ async def on_connect(connection, session) -> None:
     registry[connection.name] = tools
     cl.user_session.set(SESSION_KEY, registry)
     names = ", ".join(f"`{t['name']}`" for t in tools) or "no tools"
-    await cl.Message(content=f"🔌 Connected MCP server **{connection.name}**: {names}.\n\n"
-                             "Its tools are used automatically when a question needs them.").send()
+    await cl.Message(
+        content=f"🔌 Connected MCP server **{connection.name}**: {names}.\n\n"
+        "Its tools are used automatically when a question needs them."
+    ).send()
 
 
 async def on_disconnect(name: str, session) -> None:
@@ -81,8 +87,9 @@ async def _call(call: dict, idx: int) -> dict | None:
         step.input = json.dumps(args, ensure_ascii=False, indent=2)
         step.language = "json"
         try:
-            result = await asyncio.wait_for(mcp_session.client.call_tool(name, args),
-                                            timeout=MCP_TOOL_TIMEOUT_SEC)
+            result = await asyncio.wait_for(
+                mcp_session.client.call_tool(name, args), timeout=MCP_TOOL_TIMEOUT_SEC
+            )
         except Exception as e:
             step.is_error = True
             step.output = f"Tool call failed: {e}"
@@ -93,8 +100,11 @@ async def _call(call: dict, idx: int) -> dict | None:
             step.output = text or "(no text output)"
             return None
         step.output = text[:2000] + ("…" if len(text) > 2000 else "")
-        return {"id": f"mcp:{server}:{name}:{idx}", "text": text[:MCP_RESULT_MAX_CHARS],
-                "source": f"{server}/{name}"}
+        return {
+            "id": f"mcp:{server}:{name}:{idx}",
+            "text": text[:MCP_RESULT_MAX_CHARS],
+            "source": f"{server}/{name}",
+        }
 
 
 async def collect_evidence(question: str) -> list[dict]:

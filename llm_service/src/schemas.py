@@ -11,8 +11,9 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-Intent = Literal["fact", "comparison", "troubleshooting", "policy",
-                 "summary", "catalog", "chitchat"]
+Intent = Literal[
+    "fact", "comparison", "troubleshooting", "policy", "summary", "catalog", "chitchat"
+]
 Route = Literal["docs", "catalog", "gdrive", "web", "mcp", "direct"]
 AnswerStyle = Literal["auto", "concise", "detailed"]
 Action = Literal["accept", "retry", "clarify", "insufficient", "blocked"]
@@ -25,14 +26,16 @@ class Turn(BaseModel):
 
 class Filters(BaseModel):
     doc_type: Optional[str] = None
-    date_from: Optional[str] = None      # ISO date
-    date_to: Optional[str] = None        # ISO date
+    date_from: Optional[str] = None  # ISO date
+    date_to: Optional[str] = None  # ISO date
 
 
 # ── LLM output schemas ──────────────────────────────────────────────────
 
+
 class UnderstandingOutput(BaseModel):
     """STEP 3 — what the user is really asking."""
+
     standalone_question: str
     intent: Intent
     entities: list[str] = Field(default_factory=list, max_length=8)
@@ -44,6 +47,7 @@ class UnderstandingOutput(BaseModel):
 
 class TransformationOutput(BaseModel):
     """STEP 4 — search-ready rewrites of the question."""
+
     rewritten: str
     expansions: list[str] = Field(default_factory=list, max_length=3)
     sub_questions: list[str] = Field(default_factory=list, max_length=3)
@@ -52,12 +56,14 @@ class TransformationOutput(BaseModel):
 
 class RouteOutput(BaseModel):
     """STEP 5 (LLM fallback) — where the evidence should come from."""
+
     routes: list[Route] = Field(min_length=1, max_length=4)
     reason: str
 
 
 class DocMetadataOutput(BaseModel):
     """STEP 2 — document-level metadata attached to every chunk."""
+
     doc_type: str
     topic: str
     summary: str
@@ -66,6 +72,7 @@ class DocMetadataOutput(BaseModel):
 
 class AnswerOutput(BaseModel):
     """STEP 9 — the structured answer the model must produce."""
+
     answer_markdown: str
     citations: list[int] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
@@ -80,6 +87,7 @@ class Claim(BaseModel):
 
 class JudgeOutput(BaseModel):
     """STEP 10 — claim-level grounding + safety judgement."""
+
     claims: list[Claim] = Field(default_factory=list, max_length=20)
     unsafe: bool = False
     policy_violation: bool = False
@@ -87,10 +95,12 @@ class JudgeOutput(BaseModel):
 
 class ExtractOutput(BaseModel):
     """STEP 8 — extractive compression of one long evidence chunk."""
+
     relevant_text: str
 
 
 # ── Shared pipeline objects ─────────────────────────────────────────────
+
 
 class QueryPlan(UnderstandingOutput, TransformationOutput):
     pass
@@ -108,7 +118,7 @@ class Evidence(BaseModel):
     date: Optional[str] = None
     headings: list[str] = Field(default_factory=list)
     chunk_index: Optional[int] = None
-    owned: bool = False              # evidence from the asking user's own data
+    owned: bool = False  # evidence from the asking user's own data
 
 
 class Citation(BaseModel):
@@ -119,7 +129,7 @@ class Citation(BaseModel):
     doc_id: Optional[str] = None
     page: Optional[int] = None
     url: Optional[str] = None
-    snippet: str = ""                # evidence excerpt for the UI's source panel
+    snippet: str = ""  # evidence excerpt for the UI's source panel
 
 
 class Verdict(BaseModel):
@@ -134,6 +144,7 @@ class Verdict(BaseModel):
 
 
 # ── Task requests / responses ───────────────────────────────────────────
+
 
 class QueryAnalysisRequest(BaseModel):
     question: str
@@ -159,6 +170,7 @@ class DescribeFigureRequest(BaseModel):
 
 class DescribeFigureOutput(BaseModel):
     """STEP 1 — what a figure shows, indexed with its caption."""
+
     description: str
 
 
@@ -178,7 +190,7 @@ class CompressResponse(BaseModel):
 class GenerateRequest(BaseModel):
     plan: QueryPlan
     evidence: list[Evidence]
-    direct: bool = False             # answer without retrieval (chitchat / general)
+    direct: bool = False  # answer without retrieval (chitchat / general)
     answer_style: AnswerStyle = "auto"
 
 
@@ -198,11 +210,12 @@ class ValidateRequest(BaseModel):
 
 
 class ValidateResponse(BaseModel):
-    answer_markdown: str             # PII-masked
+    answer_markdown: str  # PII-masked
     verdict: Verdict
 
 
 # ── User MCP tool selection ─────────────────────────────────────────────
+
 
 class ToolSpec(BaseModel):
     server: str
@@ -219,10 +232,11 @@ class SelectToolsRequest(BaseModel):
 class ToolCall(BaseModel):
     server: str
     name: str
-    arguments_json: str = "{}"       # JSON object as a string (keeps the grammar simple)
+    arguments_json: str = "{}"  # JSON object as a string (keeps the grammar simple)
 
 
 class SelectToolsOutput(BaseModel):
     """Which user-connected MCP tools to call for a question (may be none)."""
+
     calls: list[ToolCall] = Field(default_factory=list, max_length=3)
     reason: str = ""

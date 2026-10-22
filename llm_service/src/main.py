@@ -54,13 +54,14 @@ from schemas import (
 log = logging.getLogger("llm_service")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create prompts missing in Langfuse from the local texts and warm the
     # prompt cache (never blocks startup for long: 3 s timeout per call).
     await asyncio.to_thread(registry.seed_missing)
     yield
-    tracing.shutdown()      # flush pending Langfuse generations
+    tracing.shutdown()  # flush pending Langfuse generations
 
 
 app = FastAPI(title="Advanced Hybrid RAG — LLM Service", version="1.0", lifespan=lifespan)
@@ -68,13 +69,14 @@ app = FastAPI(title="Advanced Hybrid RAG — LLM Service", version="1.0", lifesp
 
 class _SilencePathsFilter(logging.Filter):
     """Drop uvicorn access lines for /health so the actual events show."""
+
     def __init__(self, paths: tuple[str, ...]) -> None:
         super().__init__()
         self._paths = paths
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not any(f' {p} ' in msg for p in self._paths)
+        return not any(f" {p} " in msg for p in self._paths)
 
 
 logging.getLogger("uvicorn.access").addFilter(_SilencePathsFilter(("/health",)))
@@ -125,8 +127,9 @@ async def task_route(req: RouteRequest, request: Request):
 
 @app.post("/tasks/describe-figure", response_model=DescribeFigureOutput)
 async def task_describe_figure(req: DescribeFigureRequest, request: Request):
-    with tracing.task("describe-figure", request.headers,
-                      input={"caption": req.caption, "context": req.context}) as obs:
+    with tracing.task(
+        "describe-figure", request.headers, input={"caption": req.caption, "context": req.context}
+    ) as obs:
         try:
             return tracing.output(obs, await figures.describe(req))
         except Exception as e:
@@ -158,8 +161,9 @@ async def task_compress(req: CompressRequest, request: Request):
 async def task_generate(req: GenerateRequest, request: Request):
     with tracing.task("generate", request.headers, input=req) as obs:
         try:
-            return tracing.output(obs, await answer.generate(req.plan, req.evidence, req.direct,
-                                                             req.answer_style))
+            return tracing.output(
+                obs, await answer.generate(req.plan, req.evidence, req.direct, req.answer_style)
+            )
         except Exception as e:
             log.exception("generation failed")
             raise _llm_error(e)
@@ -169,8 +173,9 @@ async def task_generate(req: GenerateRequest, request: Request):
 async def task_validate(req: ValidateRequest, request: Request):
     with tracing.task("validate", request.headers, as_type="evaluator", input=req) as obs:
         try:
-            return tracing.output(obs, await validation.validate(req.plan, req.evidence,
-                                                                 req.answer, req.direct))
+            return tracing.output(
+                obs, await validation.validate(req.plan, req.evidence, req.answer, req.direct)
+            )
         except Exception as e:
             log.exception("validation failed")
             raise _llm_error(e)

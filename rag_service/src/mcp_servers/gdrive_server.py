@@ -24,7 +24,9 @@ mcp = FastMCP(
 @mcp.tool
 async def search_files(
     query: Annotated[str, Field(description="Words to find in file names or contents")],
-    mime_types: Annotated[Optional[list[str]], Field(description="Restrict to these MIME types")] = None,
+    mime_types: Annotated[
+        Optional[list[str]], Field(description="Restrict to these MIME types")
+    ] = None,
     limit: Annotated[int, Field(ge=1, le=25)] = 10,
 ) -> list[dict]:
     """Full-text search across Drive. Returns [{id, name, mimeType, modifiedTime, webViewLink}]."""

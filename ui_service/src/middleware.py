@@ -1,6 +1,7 @@
 """Auth middleware: every request must carry a valid session cookie,
 otherwise redirect to /login. Forces /change-password when the user has
 must_change_password = True."""
+
 from __future__ import annotations
 
 from urllib.parse import quote
@@ -37,7 +38,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Drop any X-User-* / X-Langfuse-* headers from the inbound request;
         # only the middleware/proxy layer and the backends set them.
         scope_headers = [
-            (k, v) for (k, v) in request.scope["headers"]
+            (k, v)
+            for (k, v) in request.scope["headers"]
             if not k.lower().startswith((b"x-user-", b"x-langfuse-"))
         ]
         request.scope["headers"] = scope_headers
@@ -53,7 +55,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # login page would arrive as HTML. A 401 makes it show its
                 # login state, which custom.js sends to /login.
                 return JSONResponse({"detail": "Not authenticated"}, status_code=401)
-            next_url = quote(request.url.path + (("?" + request.url.query) if request.url.query else ""))
+            next_url = quote(
+                request.url.path + (("?" + request.url.query) if request.url.query else "")
+            )
             return RedirectResponse(url=f"/login?next={next_url}", status_code=303)
 
         if user.must_change_password and path not in _FORCE_CHANGE_ALLOWED:

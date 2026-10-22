@@ -31,35 +31,58 @@ def _citations(numbers: list[int], evidence: list[Evidence]) -> list[Citation]:
             snippet = ev.text.strip()
             if len(snippet) > SNIPPET_CHARS:
                 snippet = snippet[:SNIPPET_CHARS].rsplit(" ", 1)[0] + " …"
-            out.append(Citation(n=n, evidence_id=ev.id, route=ev.route, source=ev.source,
-                                doc_id=ev.doc_id, page=ev.page, url=ev.url, snippet=snippet))
+            out.append(
+                Citation(
+                    n=n,
+                    evidence_id=ev.id,
+                    route=ev.route,
+                    source=ev.source,
+                    doc_id=ev.doc_id,
+                    page=ev.page,
+                    url=ev.url,
+                    snippet=snippet,
+                )
+            )
     return sorted(out, key=lambda c: c.n)
 
 
-async def generate(plan: QueryPlan, evidence: list[Evidence], direct: bool,
-                   style: str = "auto") -> GenerateResponse:
+async def generate(
+    plan: QueryPlan, evidence: list[Evidence], direct: bool, style: str = "auto"
+) -> GenerateResponse:
     if direct:
         messages = direct_messages(plan, style)
     elif not evidence:
         # Retrieval found nothing: say so instead of letting the model guess.
         return GenerateResponse(
             answer_markdown="I couldn't find information about this in the available sources.",
-            citations=[], confidence=0.0, insufficient_evidence=True,
+            citations=[],
+            confidence=0.0,
+            insufficient_evidence=True,
         )
     else:
         messages = answer_messages(plan, evidence, style)
 
     try:
-        out = await chat_json(messages, AnswerOutput, temperature=ANSWER_TEMPERATURE,
-                              max_tokens=ANSWER_TOKENS)
+        out = await chat_json(
+            messages, AnswerOutput, temperature=ANSWER_TEMPERATURE, max_tokens=ANSWER_TOKENS
+        )
     except LLMOutputError as e:
         log.warning("[answer] structured output failed: %s", e)
-        return GenerateResponse(answer_markdown="", citations=[], confidence=0.0,
-                                insufficient_evidence=True, schema_ok=False)
+        return GenerateResponse(
+            answer_markdown="",
+            citations=[],
+            confidence=0.0,
+            insufficient_evidence=True,
+            schema_ok=False,
+        )
 
     if direct:
-        return GenerateResponse(answer_markdown=out.answer_markdown, citations=[],
-                                confidence=out.confidence, insufficient_evidence=False)
+        return GenerateResponse(
+            answer_markdown=out.answer_markdown,
+            citations=[],
+            confidence=out.confidence,
+            insufficient_evidence=False,
+        )
 
     numbers = cited_numbers(out.answer_markdown) + list(out.citations)
     return GenerateResponse(

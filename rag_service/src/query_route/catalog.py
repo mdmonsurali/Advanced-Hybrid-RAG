@@ -35,8 +35,11 @@ def _matches(entry: dict, plan: QueryPlan) -> bool:
 
 
 def catalog_evidence(plan: QueryPlan, identity: Identity) -> list[Evidence]:
-    entries = [e for e in storage.REGISTRY.values()
-               if e.get("status") == "ok" and _visible(e, identity) and _matches(e, plan)]
+    entries = [
+        e
+        for e in storage.REGISTRY.values()
+        if e.get("status") == "ok" and _visible(e, identity) and _matches(e, plan)
+    ]
     entries.sort(key=lambda e: e.get("created_at") or "", reverse=True)
 
     own = sum(1 for e in entries if e.get("owner_id") == str(identity.id))
@@ -49,23 +52,37 @@ def catalog_evidence(plan: QueryPlan, identity: Identity) -> list[Evidence]:
     ]
     f = plan.filters
     if f.doc_type or f.date_from or f.date_to:
-        lines.append(f"Filters applied: type={f.doc_type or 'any'}, "
-                     f"from={f.date_from or '-'}, to={f.date_to or '-'}.")
+        lines.append(
+            f"Filters applied: type={f.doc_type or 'any'}, "
+            f"from={f.date_from or '-'}, to={f.date_to or '-'}."
+        )
     if by_type:
         lines.append("By type: " + ", ".join(f"{t}: {n}" for t, n in by_type.most_common()))
     if by_month:
-        lines.append("By upload month: " + ", ".join(f"{m}: {n}" for m, n in sorted(by_month.items())))
+        lines.append(
+            "By upload month: " + ", ".join(f"{m}: {n}" for m, n in sorted(by_month.items()))
+        )
     if entries:
         lines.append("")
         lines.append("| Name | Type | Topic | Pages | Uploaded | Owner |")
         lines.append("|---|---|---|---|---|---|")
         for e in entries[:CATALOG_MAX_ROWS]:
             owner = "you" if e.get("owner_id") == str(identity.id) else "shared"
-            lines.append(f"| {e.get('source', '')} | {e.get('doc_type', '')} | "
-                         f"{(e.get('topic') or '').replace('|', '/')} | {e.get('page_count') or ''} | "
-                         f"{(e.get('created_at') or '')[:10]} | {owner} |")
+            lines.append(
+                f"| {e.get('source', '')} | {e.get('doc_type', '')} | "
+                f"{(e.get('topic') or '').replace('|', '/')} | {e.get('page_count') or ''} | "
+                f"{(e.get('created_at') or '')[:10]} | {owner} |"
+            )
         if len(entries) > CATALOG_MAX_ROWS:
             lines.append(f"(+{len(entries) - CATALOG_MAX_ROWS} more not listed)")
 
-    return [Evidence(id="catalog:0", route="catalog", text="\n".join(lines), score=1.0,
-                     source="Document catalog", owned=True)]
+    return [
+        Evidence(
+            id="catalog:0",
+            route="catalog",
+            text="\n".join(lines),
+            score=1.0,
+            source="Document catalog",
+            owned=True,
+        )
+    ]

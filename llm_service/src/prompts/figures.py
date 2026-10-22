@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from prompts import registry
 
-FIGURE_SYSTEM = registry.register("rag/figure-description", """\
+FIGURE_SYSTEM = registry.register(
+    "rag/figure-description",
+    """\
 You describe figures from documents for a search index. Look at the image and \
 write a factual description someone could search for:
 - what kind of figure it is (bar chart, line chart, table image, diagram, \
@@ -15,7 +17,8 @@ it shows,
 - any legible labels, names, numbers and units.
 Only state what is visible; do not guess. Write plain text, at most 120 words, \
 in the language of the caption / context (English if there is none). If the \
-image is only a logo, icon or decoration, answer with an empty string.""")
+image is only a logo, icon or decoration, answer with an empty string.""",
+)
 
 
 def figure_messages(image_b64: str, mime: str, caption: str, context: str) -> list[dict]:

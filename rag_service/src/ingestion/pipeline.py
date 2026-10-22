@@ -96,22 +96,29 @@ async def _index(doc_id: str, meta: dict, entry: dict) -> dict:
             await qdrant_store.upsert_chunks(doc_id, dense_vecs, sparse_vecs, payloads)
 
         entry.update(doc_meta)
-        entry.update({
-            "status": "ok",
-            "chunk_count": len(chunks),
-            "table_chunks": sum(1 for c in chunks if c.chunk_type == "table"),
-            "figure_chunks": sum(1 for c in chunks if c.chunk_type == "figure"),
-            "merged_tables": sum(len(p) - 1 for p in row_pages.values()),
-            "figure_descriptions": figure_status,
-            "chunker_version": CHUNKER_VERSION,
-            "embed_model": dense.EMBED_MODEL,
-            "indexed_at": _now(),
-            "updated_at": _now(),
-            "error": None,
-        })
+        entry.update(
+            {
+                "status": "ok",
+                "chunk_count": len(chunks),
+                "table_chunks": sum(1 for c in chunks if c.chunk_type == "table"),
+                "figure_chunks": sum(1 for c in chunks if c.chunk_type == "figure"),
+                "merged_tables": sum(len(p) - 1 for p in row_pages.values()),
+                "figure_descriptions": figure_status,
+                "chunker_version": CHUNKER_VERSION,
+                "embed_model": dense.EMBED_MODEL,
+                "indexed_at": _now(),
+                "updated_at": _now(),
+                "error": None,
+            }
+        )
         await storage.put_index(entry)
-        log.info("[ingest] %s (%s): ingested %d chunks, doc_type=%s",
-                 entry["source"], doc_id, len(chunks), entry.get("doc_type"))
+        log.info(
+            "[ingest] %s (%s): ingested %d chunks, doc_type=%s",
+            entry["source"],
+            doc_id,
+            len(chunks),
+            entry.get("doc_type"),
+        )
         return entry
     except Exception as exc:
         log.exception("[ingest] %s failed", doc_id)
@@ -122,7 +129,10 @@ async def _index(doc_id: str, meta: dict, entry: dict) -> dict:
 
 def _degraded(entry: dict) -> bool:
     """Indexed without the LLM (heuristic metadata or undescribed figures)."""
-    return entry.get("metadata_source") == "heuristic"         or entry.get("figure_descriptions") == "unavailable"
+    return (
+        entry.get("metadata_source") == "heuristic"
+        or entry.get("figure_descriptions") == "unavailable"
+    )
 
 
 def schedule(doc_id: str) -> bool:
@@ -142,7 +152,7 @@ def schedule(doc_id: str) -> bool:
                 log.info("[ingest] %s indexed without the LLM, which is back: re-indexing", doc_id)
                 await ingest(doc_id)
         except Exception:
-            pass                                  # already logged + recorded
+            pass  # already logged + recorded
         finally:
             _running.discard(doc_id)
 
@@ -176,11 +186,19 @@ async def sync(upgrade_heuristic: bool = False) -> dict:
         if meta.get("status") != "ok":
             continue
         entry = storage.REGISTRY.get(doc_id)
-        stale = (entry is None or entry.get("status") == "error"
-                 or entry.get("embed_model") != dense.EMBED_MODEL
-                 or entry.get("chunker_version") != CHUNKER_VERSION
-                 or (upgrade_heuristic and (entry.get("metadata_source") == "heuristic"
-                                            or entry.get("figure_descriptions") == "unavailable")))
+        stale = (
+            entry is None
+            or entry.get("status") == "error"
+            or entry.get("embed_model") != dense.EMBED_MODEL
+            or entry.get("chunker_version") != CHUNKER_VERSION
+            or (
+                upgrade_heuristic
+                and (
+                    entry.get("metadata_source") == "heuristic"
+                    or entry.get("figure_descriptions") == "unavailable"
+                )
+            )
+        )
         if stale:
             if schedule(doc_id):
                 queued.append(doc_id)
@@ -195,6 +213,7 @@ async def sync(upgrade_heuristic: bool = False) -> dict:
             await remove(doc_id)
             removed.append(doc_id)
 
-    log.info("[sync] queued=%d removed=%d access_fixed=%d",
-             len(queued), len(removed), len(access_fixed))
+    log.info(
+        "[sync] queued=%d removed=%d access_fixed=%d", len(queued), len(removed), len(access_fixed)
+    )
     return {"queued": queued, "removed": removed, "access_fixed": access_fixed}

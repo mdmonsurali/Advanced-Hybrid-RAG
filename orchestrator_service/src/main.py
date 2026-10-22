@@ -37,12 +37,13 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 MAX_QUESTION_CHARS = 4000
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     gpu_swap.arbiter.start()
     yield
     await gpu_swap.arbiter.stop()
-    tracing.shutdown()      # flush pending Langfuse spans and scores
+    tracing.shutdown()  # flush pending Langfuse spans and scores
 
 
 app = FastAPI(title="Advanced Hybrid RAG — Orchestrator", version="1.0", lifespan=lifespan)
@@ -50,13 +51,14 @@ app = FastAPI(title="Advanced Hybrid RAG — Orchestrator", version="1.0", lifes
 
 class _SilencePathsFilter(logging.Filter):
     """Drop uvicorn access lines for /health so the actual events show."""
+
     def __init__(self, paths: tuple[str, ...]) -> None:
         super().__init__()
         self._paths = paths
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not any(f' {p} ' in msg for p in self._paths)
+        return not any(f" {p} " in msg for p in self._paths)
 
 
 logging.getLogger("uvicorn.access").addFilter(_SilencePathsFilter(("/health", "/gpu/renew")))
@@ -82,9 +84,16 @@ def _options(payload: dict) -> dict:
     for ev in (raw.get("external_evidence") or [])[:MAX_EXTERNAL_EVIDENCE]:
         if not isinstance(ev, dict) or not ev.get("id") or not ev.get("text"):
             continue
-        external.append({"id": str(ev["id"]), "route": "mcp", "text": str(ev["text"])[:MAX_EXTERNAL_CHARS],
-                         "source": str(ev.get("source") or "MCP tool"), "url": ev.get("url"),
-                         "owned": False})
+        external.append(
+            {
+                "id": str(ev["id"]),
+                "route": "mcp",
+                "text": str(ev["text"])[:MAX_EXTERNAL_CHARS],
+                "source": str(ev.get("source") or "MCP tool"),
+                "url": ev.get("url"),
+                "owned": False,
+            }
+        )
     return {
         "route_hint": [r for r in raw.get("route_hint") or [] if r in _ROUTES],
         "deny_routes": [r for r in raw.get("deny_routes") or [] if r in _ROUTES],
@@ -104,8 +113,11 @@ def _parse(payload: dict) -> tuple[str, list[dict]]:
     history = payload.get("history") or []
     if not isinstance(history, list):
         raise HTTPException(400, "history must be a list of {role, content}")
-    history = [{"role": h.get("role"), "content": str(h.get("content", ""))[:MAX_QUESTION_CHARS]}
-               for h in history if isinstance(h, dict)]
+    history = [
+        {"role": h.get("role"), "content": str(h.get("content", ""))[:MAX_QUESTION_CHARS]}
+        for h in history
+        if isinstance(h, dict)
+    ]
     return question, history
 
 
@@ -113,9 +125,11 @@ def _parse(payload: dict) -> tuple[str, list[dict]]:
 async def health():
     llm_ok = await clients.healthy(clients.LLM_SERVICE_URL)
     rag_ok = await clients.healthy(clients.RAG_SERVICE_URL)
-    status = {"status": "ok" if llm_ok and rag_ok else "degraded",
-              "llm_service": "ok" if llm_ok else "down",
-              "rag_service": "ok" if rag_ok else "down"}
+    status = {
+        "status": "ok" if llm_ok and rag_ok else "degraded",
+        "llm_service": "ok" if llm_ok else "down",
+        "rag_service": "ok" if rag_ok else "down",
+    }
     if gpu_swap.GPU_SWAP_ENABLED:
         status["gpu"] = gpu_swap.arbiter.status()
     # The orchestrator itself is up either way; the UI shows the degraded parts.
@@ -131,11 +145,15 @@ async def chat(payload: dict = Body(...), identity: Identity = Depends(require_u
         async for event, data in pipeline.run(question, history, identity, options):
             yield _sse(event, data)
 
-    return StreamingResponse(stream(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-    })
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/query")
@@ -156,6 +174,7 @@ async def query(payload: dict = Body(...), identity: Identity = Depends(require_
 
 # ── GPU swap leases (ocr_service, ui_service) ─────────────────────────────
 # Internal: called over the docker network, like rag_service /ingest/*.
+
 
 @app.get("/gpu/status")
 async def gpu_status():

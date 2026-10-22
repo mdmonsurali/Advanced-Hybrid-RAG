@@ -47,12 +47,22 @@ def _render_base(event: str, d: dict) -> str:
     if event == "understanding":
         f = d.get("filters") or {}
         filters = ", ".join(f"{k}={v}" for k, v in f.items() if v)
-        return _bullets([("Intent", d.get("intent")), ("Question", d.get("standalone_question")),
-                         ("Entities", ", ".join(d.get("entities") or [])), ("Filters", filters),
-                         ("Language", d.get("language"))])
+        return _bullets(
+            [
+                ("Intent", d.get("intent")),
+                ("Question", d.get("standalone_question")),
+                ("Entities", ", ".join(d.get("entities") or [])),
+                ("Filters", filters),
+                ("Language", d.get("language")),
+            ]
+        )
     if event == "transformation":
-        out = _bullets([("Rewritten", d.get("rewritten")),
-                        ("Expansions", "; ".join(d.get("expansions") or []))])
+        out = _bullets(
+            [
+                ("Rewritten", d.get("rewritten")),
+                ("Expansions", "; ".join(d.get("expansions") or [])),
+            ]
+        )
         if d.get("sub_questions"):
             out += "\n- **Sub-questions:**\n" + "\n".join(f"  1. {q}" for q in d["sub_questions"])
         if d.get("hyde_passage"):
@@ -61,43 +71,74 @@ def _render_base(event: str, d: dict) -> str:
     if event == "gpu_wait":
         return d.get("message") or "The GPU is busy with document ingestion."
     if event == "routing":
-        return _bullets([("Routes", " + ".join(d.get("routes") or [])),
-                         ("Decided by", d.get("decided_by")), ("Reason", d.get("reason")),
-                         ("MCP tool results", d.get("external_evidence") or None)])
+        return _bullets(
+            [
+                ("Routes", " + ".join(d.get("routes") or [])),
+                ("Decided by", d.get("decided_by")),
+                ("Reason", d.get("reason")),
+                ("MCP tool results", d.get("external_evidence") or None),
+            ]
+        )
     if event == "retrieved":
-        rows = [f"| {r} | {d.get('per_route', {}).get(r, 0)} | {s} |"
-                for r, s in (d.get("route_status") or {}).items()]
+        rows = [
+            f"| {r} | {d.get('per_route', {}).get(r, 0)} | {s} |"
+            for r, s in (d.get("route_status") or {}).items()
+        ]
         table = "| Route | Candidates | Status |\n|---|---|---|\n" + "\n".join(rows) if rows else ""
         extra = " (broadened retry: filters dropped, more candidates)" if d.get("broaden") else ""
         return f"{d.get('candidates', 0)} candidates{extra}\n\n{table}"
     if event == "reranked":
-        rows = [f"| {t.get('score')} | {t.get('route')} | {t.get('source')}"
-                f"{' p.' + str(t['page']) if t.get('page') else ''} |" for t in d.get("top") or []]
+        rows = [
+            f"| {t.get('score')} | {t.get('route')} | {t.get('source')}"
+            f"{' p.' + str(t['page']) if t.get('page') else ''} |"
+            for t in d.get("top") or []
+        ]
         table = "| Score | Route | Source |\n|---|---|---|\n" + "\n".join(rows) if rows else ""
         return f"Kept **{d.get('kept', 0)}** passages\n\n{table}"
     if event == "compressed":
-        return _bullets([("Evidence blocks", d.get("evidence")), ("Tokens", d.get("tokens")),
-                         ("Dropped", d.get("dropped")), ("Merged", d.get("merged")),
-                         ("Extractively compressed", d.get("extracted"))])
+        return _bullets(
+            [
+                ("Evidence blocks", d.get("evidence")),
+                ("Tokens", d.get("tokens")),
+                ("Dropped", d.get("dropped")),
+                ("Merged", d.get("merged")),
+                ("Extractively compressed", d.get("extracted")),
+            ]
+        )
     if event == "generating":
-        return "Direct answer (no retrieval)" if d.get("direct") else \
-            f"Answering from {d.get('evidence', 0)} evidence blocks"
+        return (
+            "Direct answer (no retrieval)"
+            if d.get("direct")
+            else f"Answering from {d.get('evidence', 0)} evidence blocks"
+        )
     if event == "validated":
-        out = _bullets([("Decision", d.get("action")),
-                        ("Groundedness", f"{round(100 * d.get('grounded_score', 0))}%"),
-                        ("Citations valid", "yes" if d.get("citation_ok") else "no"),
-                        ("PII redacted", d.get("pii_masked") or None),
-                        ("Reason", d.get("reason"))])
+        out = _bullets(
+            [
+                ("Decision", d.get("action")),
+                ("Groundedness", f"{round(100 * d.get('grounded_score', 0))}%"),
+                ("Citations valid", "yes" if d.get("citation_ok") else "no"),
+                ("PII redacted", d.get("pii_masked") or None),
+                ("Reason", d.get("reason")),
+            ]
+        )
         if d.get("unsupported_claims"):
-            out += "\n- **Unsupported claims:**\n" + "\n".join(f"  - {c}" for c in d["unsupported_claims"])
+            out += "\n- **Unsupported claims:**\n" + "\n".join(
+                f"  - {c}" for c in d["unsupported_claims"]
+            )
         return out
     return f"```json\n{json.dumps(d, indent=2, ensure_ascii=False)}\n```"
 
 
 _DEBUG_SECTIONS = {
-    "retrieved": ("candidate_chunks", "All retrieved chunks (before reranking; score = first-stage fusion score)"),
+    "retrieved": (
+        "candidate_chunks",
+        "All retrieved chunks (before reranking; score = first-stage fusion score)",
+    ),
     "reranked": ("chunks", "Chunks kept after reranking (score = cross-encoder)"),
-    "compressed": ("sent_to_llm", "Exact evidence sent to the LLM (numbers match the [n] citations)"),
+    "compressed": (
+        "sent_to_llm",
+        "Exact evidence sent to the LLM (numbers match the [n] citations)",
+    ),
 }
 _CHUNK_CHARS = 1500
 
@@ -105,9 +146,17 @@ _CHUNK_CHARS = 1500
 def _chunks_md(title: str, chunks: list[dict]) -> str:
     out = [f"\n\n#### {title} — {len(chunks)}"]
     for c in chunks:
-        where = " · ".join(str(x) for x in (
-            c.get("route"), c.get("source"), f"p.{c['page']}" if c.get("page") else None,
-            " > ".join(c.get("headings") or []) or None, f"score {c.get('score')}") if x)
+        where = " · ".join(
+            str(x)
+            for x in (
+                c.get("route"),
+                c.get("source"),
+                f"p.{c['page']}" if c.get("page") else None,
+                " > ".join(c.get("headings") or []) or None,
+                f"score {c.get('score')}",
+            )
+            if x
+        )
         text = (c.get("text") or "").strip()
         if len(text) > _CHUNK_CHARS:
             text = text[:_CHUNK_CHARS] + f" … [{len(c['text']) - _CHUNK_CHARS} more chars]"
@@ -139,8 +188,9 @@ def _footer(final: dict) -> str:
     return " · ".join(b for b in bits if b)
 
 
-async def run(question: str, history: list[dict], options: dict, headers: dict,
-              show_steps: bool = True) -> dict | None:
+async def run(
+    question: str, history: list[dict], options: dict, headers: dict, show_steps: bool = True
+) -> dict | None:
     """Stream one question through the pipeline; returns the final answer."""
     final: dict | None = None
     attempt = 0
@@ -152,8 +202,9 @@ async def run(question: str, history: list[dict], options: dict, headers: dict,
                     final = data
                     continue
                 if event == "error":
-                    raise backend.BackendError(data.get("service", "pipeline"),
-                                               data.get("detail", "failed"))
+                    raise backend.BackendError(
+                        data.get("service", "pipeline"), data.get("detail", "failed")
+                    )
                 attempt = data.get("attempt", attempt)
                 title = _TITLES.get(event, event)
                 if attempt:
@@ -182,6 +233,9 @@ async def run(question: str, history: list[dict], options: dict, headers: dict,
     # status line is plain Markdown italics.
     content = "\n\n".join(p for p in (content, footer, f"*{_footer(final)}*") if p)
     # The trace id lets 👍/👎 on this message become a score on its Langfuse trace.
-    await cl.Message(content=content, elements=source_elements(citations),
-                     metadata={"langfuse_trace_id": final.get("trace_id")}).send()
+    await cl.Message(
+        content=content,
+        elements=source_elements(citations),
+        metadata={"langfuse_trace_id": final.get("trace_id")},
+    ).send()
     return final

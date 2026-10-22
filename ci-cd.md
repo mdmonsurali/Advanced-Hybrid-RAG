@@ -15,7 +15,7 @@ Results are on the [Actions tab](https://github.com/mdmonsurali/Advanced-Hybrid-
 
 | Job | What it checks | Services |
 |---|---|---|
-| `lint` | Python syntax errors and undefined names (`ruff`, error rules only) | all |
+| `lint` | Python syntax errors and undefined names (`ruff`, error rules only), and formatting (`ruff format --check`) | all |
 | `compose` | `docker-compose.yml` is valid, using `.env.example` | n/a |
 | `dockerfile-check` | Dockerfile mistakes and bad practices (`docker buildx build --check`) | all 6 |
 | `build` | Image builds end to end | ui, auth, orchestrator, rag |
@@ -45,8 +45,9 @@ so they only get `lint` and `dockerfile-check`.
 
 ### Phase 2: Code quality
 
-- [ ] **Step 7: Formatting.** Auto-format all files once (`ruff format`), then enforce
-  `ruff format --check` in CI. 76 of 87 files need reformatting.
+- [x] **Step 7: Formatting.** Auto-formatted 76 files once with `ruff format` (line length 100,
+  set in `ruff.toml`). CI now runs `ruff format --check`, with ruff pinned to `0.17.1`. The
+  formatting commit is listed in `.git-blame-ignore-revs`, so `git blame` skips it.
 - [ ] **Step 8: Full lint.** Turn on all configured `ruff` rules. There are 236 issues, 148 of them auto-fixable;
   fix the rest by hand.
 - [ ] **Step 9: Type checking.** Add `mypy` or `pyright`, review the results, then fix the issues or relax rules.
@@ -71,4 +72,6 @@ so they only get `lint` and `dockerfile-check`.
   `gh run view <run-id> --log-failed`.
 - **Runner versions:** GitHub's runners use newer Docker and Compose versions than a typical local
   install, so a check can pass locally and fail in CI (this happened in Step 5).
+- **Formatting before you push:** `pip install ruff==0.17.1`, then
+  `ruff format auth_service llm_service ocr_service orchestrator_service rag_service ui_service langfuse_service`.
 - **Secrets:** `.env` is gitignored and never reaches CI. CI uses `.env.example` (dummy values).

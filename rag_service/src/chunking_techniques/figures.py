@@ -25,8 +25,11 @@ _MAX_INNER_CHARS = 800
 def _inner_text(doc: DoclingDocument, picture: PictureItem) -> str:
     """Text items nested inside the picture (not its caption / footnotes)."""
     skip = {r.cref for r in [*picture.captions, *picture.footnotes]}
-    texts = [item.text.strip() for item, _ in doc.iterate_items(root=picture, traverse_pictures=True)
-             if isinstance(item, TextItem) and item.self_ref not in skip and item.text.strip()]
+    texts = [
+        item.text.strip()
+        for item, _ in doc.iterate_items(root=picture, traverse_pictures=True)
+        if isinstance(item, TextItem) and item.self_ref not in skip and item.text.strip()
+    ]
     joined = " · ".join(texts)
     return joined if len(joined) <= _MAX_INNER_CHARS else joined[:_MAX_INNER_CHARS] + "…"
 
@@ -39,8 +42,9 @@ def picture_description(picture: PictureItem) -> str:
     return ""
 
 
-def figure_chunk(doc: DoclingDocument, picture: PictureItem, heading_path: str,
-                 description: str) -> tuple[str, str] | None:
+def figure_chunk(
+    doc: DoclingDocument, picture: PictureItem, heading_path: str, description: str
+) -> tuple[str, str] | None:
     """(text, embed_text) for one picture, or None if it carries nothing."""
     description = description or picture_description(picture)
     inner = _inner_text(doc, picture)

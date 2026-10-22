@@ -30,10 +30,12 @@ RETRIEVE_K = int(os.getenv("RAG_RETRIEVE_K", "30"))
 
 
 def _acl_filter(identity: Identity) -> models.Filter:
-    return models.Filter(should=[
-        models.FieldCondition(key="owner_id", match=models.MatchValue(value=str(identity.id))),
-        models.FieldCondition(key="access_level", match=models.MatchValue(value="shared")),
-    ])
+    return models.Filter(
+        should=[
+            models.FieldCondition(key="owner_id", match=models.MatchValue(value=str(identity.id))),
+            models.FieldCondition(key="access_level", match=models.MatchValue(value="shared")),
+        ]
+    )
 
 
 def build_filter(plan: QueryPlan, identity: Identity, broaden: bool) -> models.Filter:
@@ -41,11 +43,18 @@ def build_filter(plan: QueryPlan, identity: Identity, broaden: bool) -> models.F
     if not broaden:
         f = plan.filters
         if f.doc_type:
-            must.append(models.FieldCondition(key="doc_type",
-                                              match=models.MatchValue(value=f.doc_type.lower())))
+            must.append(
+                models.FieldCondition(
+                    key="doc_type", match=models.MatchValue(value=f.doc_type.lower())
+                )
+            )
         if f.date_from or f.date_to:
-            must.append(models.FieldCondition(key="timestamp", range=models.DatetimeRange(
-                gte=f.date_from or None, lte=f.date_to or None)))
+            must.append(
+                models.FieldCondition(
+                    key="timestamp",
+                    range=models.DatetimeRange(gte=f.date_from or None, lte=f.date_to or None),
+                )
+            )
     return models.Filter(must=must)
 
 
@@ -53,7 +62,9 @@ def search_queries(plan: QueryPlan) -> list[tuple[str, bool]]:
     """(query, is_main) pairs: sub-questions when decomposed, else the
     rewritten question."""
     if plan.sub_questions:
-        return [(q, False) for q in plan.sub_questions] + [(plan.rewritten or plan.standalone_question, True)]
+        return [(q, False) for q in plan.sub_questions] + [
+            (plan.rewritten or plan.standalone_question, True)
+        ]
     return [(plan.rewritten or plan.standalone_question, True)]
 
 
@@ -74,8 +85,9 @@ def _evidence(point: models.ScoredPoint, identity: Identity) -> Evidence:
     )
 
 
-async def search_docs(plan: QueryPlan, identity: Identity,
-                      broaden: bool = False) -> list[tuple[Evidence, str]]:
+async def search_docs(
+    plan: QueryPlan, identity: Identity, broaden: bool = False
+) -> list[tuple[Evidence, str]]:
     """Returns (evidence, query it was retrieved for) pairs, deduplicated by
     chunk id — the query is what the reranker scores the chunk against."""
     flt = build_filter(plan, identity, broaden)
@@ -99,6 +111,7 @@ async def search_docs(plan: QueryPlan, identity: Identity,
         for ev, q in hits:
             if ev.id not in best or ev.score > best[ev.id][0].score:
                 best[ev.id] = (ev, q)
-    log.info("[retrieve] %d queries -> %d unique chunks (broaden=%s)",
-             len(queries), len(best), broaden)
+    log.info(
+        "[retrieve] %d queries -> %d unique chunks (broaden=%s)", len(queries), len(best), broaden
+    )
     return list(best.values())

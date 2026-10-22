@@ -17,6 +17,7 @@ Pre-existing installs from earlier versions will have one of:
     MASTER_USERNAME (typically 'master');
   - no users at all → fresh insert.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,12 +31,8 @@ log = logging.getLogger("auth_service.bootstrap")
 
 def _read_credentials() -> tuple[str, str]:
     """Prefer the MASTER_* names; fall back to ADMIN_* for older .env files."""
-    username = (os.getenv("MASTER_USERNAME")
-                or os.getenv("ADMIN_USERNAME")
-                or "master").strip()
-    password = (os.getenv("MASTER_PASSWORD")
-                or os.getenv("ADMIN_PASSWORD")
-                or "").strip()
+    username = (os.getenv("MASTER_USERNAME") or os.getenv("ADMIN_USERNAME") or "master").strip()
+    password = (os.getenv("MASTER_PASSWORD") or os.getenv("ADMIN_PASSWORD") or "").strip()
     if not username or not password:
         raise RuntimeError(
             "MASTER_USERNAME and MASTER_PASSWORD must be set "
@@ -54,8 +51,11 @@ async def bootstrap_admin() -> None:
             await db.update_user(master["id"], disabled=False)
             log.info("bootstrap: re-enabled disabled master '%s'", master["username"])
         else:
-            log.info("bootstrap: master already exists (id=%s, username=%s)",
-                     master["id"], master["username"])
+            log.info(
+                "bootstrap: master already exists (id=%s, username=%s)",
+                master["id"],
+                master["username"],
+            )
         return
 
     # 2. No master. Look for the seeded username — could be an admin from an
@@ -64,21 +64,29 @@ async def bootstrap_admin() -> None:
     seeded = await db.get_user_by_username(username)
     if seeded:
         await db.update_user(seeded["id"], role="master", disabled=False)
-        log.info("bootstrap: promoted existing '%s' (was role=%s) to master (id=%s)",
-                 username, seeded["role"], seeded["id"])
+        log.info(
+            "bootstrap: promoted existing '%s' (was role=%s) to master (id=%s)",
+            username,
+            seeded["role"],
+            seeded["id"],
+        )
         return
 
     # 3. Fall back to any pre-existing admin so the operator's previous
     #    credentials still work, just under the new username.
     old_admin = await db.find_first_user("admin")
     if old_admin:
-        await db.update_user(old_admin["id"], role="master", username=username,
-                             disabled=False)
-        log.info("bootstrap: promoted legacy admin '%s' to master and renamed "
-                 "to '%s' (id=%s)", old_admin["username"], username, old_admin["id"])
+        await db.update_user(old_admin["id"], role="master", username=username, disabled=False)
+        log.info(
+            "bootstrap: promoted legacy admin '%s' to master and renamed to '%s' (id=%s)",
+            old_admin["username"],
+            username,
+            old_admin["id"],
+        )
         return
 
     # 4. Fresh install — create the master from env.
-    created = await db.create_user(username, hash_password(password), "master",
-                                   must_change_password=False)
+    created = await db.create_user(
+        username, hash_password(password), "master", must_change_password=False
+    )
     log.info("bootstrap: created master user '%s' (id=%s)", username, created["id"])
