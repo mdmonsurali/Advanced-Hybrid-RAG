@@ -1,0 +1,4 @@
+# Commits that only reformat code; `git blame` skips them.
+# Local setup (once): git config blame.ignoreRevsFile .git-blame-ignore-revs
+# ruff format of all services
+483ca3f074a2b44e459a17d3dd1be6fe37999124
