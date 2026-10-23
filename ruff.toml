@@ -1,3 +1,25 @@
 # Ruff settings shared by every service (lint + formatter).
 line-length = 100
 target-version = "py311"
+
+[lint]
+ignore = [
+    # `except Exception:` is used on purpose so one failed step (health probe, password
+    # check, LLM call) degrades instead of crashing the service. Revisit once tests exist (Step 10).
+    "BLE001",
+    # Chains of guard clauses (`if x: return False` ... `return True`) read better than
+    # one combined `return not (...)`.
+    "SIM103",
+]
+
+[lint.flake8-bugbear]
+# FastAPI declares parameters with calls in default arguments; that is the intended usage.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Body",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.Path",
+]

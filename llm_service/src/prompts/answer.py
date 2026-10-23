@@ -8,8 +8,9 @@ fallback)."""
 
 from __future__ import annotations
 
-from prompts import registry
 from schemas import Evidence, QueryPlan
+
+from prompts import registry
 
 ANSWER_SYSTEM = registry.register(
     "rag/answer",

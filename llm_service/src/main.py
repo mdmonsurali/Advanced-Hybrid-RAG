@@ -24,10 +24,8 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
-
 import tracing
-
+from fastapi import FastAPI, HTTPException, Request
 from generation import answer, compression, figures, query_analysis, tools, validation
 from llm_client import client
 from llm_client.client import LLMOutputError

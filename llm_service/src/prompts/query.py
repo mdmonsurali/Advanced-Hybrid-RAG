@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 from datetime import date
 
-from prompts import registry
 from schemas import QueryPlan, Route, Turn
+
+from prompts import registry
 
 UNDERSTANDING_SYSTEM = registry.register(
     "rag/understanding",

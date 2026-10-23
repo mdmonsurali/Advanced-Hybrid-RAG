@@ -17,11 +17,11 @@ import asyncio
 import logging
 import multiprocessing as mp
 import os
+from collections.abc import AsyncIterator
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
 
 import httpx
 from docling_core.types.doc import DoclingDocument

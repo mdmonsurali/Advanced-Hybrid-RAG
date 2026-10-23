@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from schemas import Evidence
+
 from prompts import registry
 from prompts.answer import format_evidence
-from schemas import Evidence
 
 JUDGE_SYSTEM = registry.register(
     "rag/judge",

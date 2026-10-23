@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import os
 import uuid as _uuid
-from typing import Optional
 
 from qdrant_client import AsyncQdrantClient, models
 
@@ -23,7 +22,7 @@ SPARSE = "bm25"
 
 _KEYWORD_FIELDS = ("owner_id", "access_level", "doc_id", "doc_type", "chunk_type", "language")
 
-client: Optional[AsyncQdrantClient] = None
+client: AsyncQdrantClient | None = None
 
 
 def init_client(location: str | None = None) -> None:

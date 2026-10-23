@@ -6,11 +6,10 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+import auth_client
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
-
-import auth_client
 
 _PUBLIC_PREFIXES = ("/static/",)
 _PUBLIC_EXACT = {"/login", "/logout", "/health", "/favicon.ico"}

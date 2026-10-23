@@ -7,7 +7,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -30,7 +29,7 @@ class CurrentUser:
 _cache: dict[str, tuple[float, CurrentUser]] = {}
 
 
-def _cache_get(sid: str) -> Optional[CurrentUser]:
+def _cache_get(sid: str) -> CurrentUser | None:
     item = _cache.get(sid)
     if not item:
         return None
@@ -49,7 +48,7 @@ def _cache_drop(sid: str) -> None:
     _cache.pop(sid, None)
 
 
-async def validate(session_id: str) -> Optional[CurrentUser]:
+async def validate(session_id: str) -> CurrentUser | None:
     """Resolve a session_id to a CurrentUser, or None if invalid/expired."""
     if not session_id:
         return None
@@ -76,7 +75,7 @@ async def validate(session_id: str) -> Optional[CurrentUser]:
     return user
 
 
-async def login(username: str, password: str) -> tuple[Optional[str], dict]:
+async def login(username: str, password: str) -> tuple[str | None, dict]:
     """Returns (session_cookie_value, body) on success; (None, body) on failure."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(

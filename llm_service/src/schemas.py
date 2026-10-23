@@ -7,7 +7,7 @@ compiles them into a grammar and the model can only emit matching JSON.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -25,9 +25,9 @@ class Turn(BaseModel):
 
 
 class Filters(BaseModel):
-    doc_type: Optional[str] = None
-    date_from: Optional[str] = None  # ISO date
-    date_to: Optional[str] = None  # ISO date
+    doc_type: str | None = None
+    date_from: str | None = None  # ISO date
+    date_to: str | None = None  # ISO date
 
 
 # ── LLM output schemas ──────────────────────────────────────────────────
@@ -42,7 +42,7 @@ class UnderstandingOutput(BaseModel):
     filters: Filters = Field(default_factory=Filters)
     language: str = "en"
     ambiguous: bool = False
-    clarifying_question: Optional[str] = None
+    clarifying_question: str | None = None
 
 
 class TransformationOutput(BaseModel):
@@ -112,12 +112,12 @@ class Evidence(BaseModel):
     text: str
     score: float = 0.0
     source: str = ""
-    doc_id: Optional[str] = None
-    page: Optional[int] = None
-    url: Optional[str] = None
-    date: Optional[str] = None
+    doc_id: str | None = None
+    page: int | None = None
+    url: str | None = None
+    date: str | None = None
     headings: list[str] = Field(default_factory=list)
-    chunk_index: Optional[int] = None
+    chunk_index: int | None = None
     owned: bool = False  # evidence from the asking user's own data
 
 
@@ -126,9 +126,9 @@ class Citation(BaseModel):
     evidence_id: str
     route: Route
     source: str
-    doc_id: Optional[str] = None
-    page: Optional[int] = None
-    url: Optional[str] = None
+    doc_id: str | None = None
+    page: int | None = None
+    url: str | None = None
     snippet: str = ""  # evidence excerpt for the UI's source panel
 
 

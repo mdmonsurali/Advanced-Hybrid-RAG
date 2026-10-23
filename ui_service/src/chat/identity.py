@@ -9,18 +9,16 @@ apply immediately instead of when Chainlit's JWT expires.
 from __future__ import annotations
 
 from http.cookies import SimpleCookie
-from typing import Optional
-
-import chainlit as cl
 
 import auth_client
+import chainlit as cl
 
 
 class SessionExpired(Exception):
     pass
 
 
-def session_cookie_from(cookie_header: str) -> Optional[str]:
+def session_cookie_from(cookie_header: str) -> str | None:
     jar = SimpleCookie()
     try:
         jar.load(cookie_header or "")

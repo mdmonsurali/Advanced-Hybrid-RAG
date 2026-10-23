@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import uuid as _uuid
-from typing import Optional
-
-from fastapi import Cookie, Depends, HTTPException, status
 
 import db
+from fastapi import Cookie, Depends, HTTPException, status
 from security import SESSION_COOKIE_NAME
 
 
 async def current_session(
-    montashi_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    montashi_session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> dict:
     if not montashi_session:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")

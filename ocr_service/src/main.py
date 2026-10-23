@@ -38,16 +38,14 @@ import uuid as _uuid
 import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List
-
-import httpx
-from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import JSONResponse, Response, StreamingResponse
-from PIL import Image
 
 import docling_engine
 import gpu_worker
+import httpx
 import storage
+from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from PIL import Image
 
 log = logging.getLogger("ocr_service")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -224,7 +222,7 @@ def _docx_page_count(in_path: Path) -> int:
 
 
 async def _upload_picture_assets(
-    doc_id: _uuid.UUID, pictures: List[tuple[str, Image.Image]]
+    doc_id: _uuid.UUID, pictures: list[tuple[str, Image.Image]]
 ) -> None:
     """PNG-encode each picture and upload it to MinIO under images/{fname}."""
 
@@ -416,7 +414,7 @@ def _sse(event: str, payload: dict) -> str:
 
 @app.post("/ocr/batch")
 async def ocr_batch(
-    files: List[UploadFile] = File(...), identity: Identity = Depends(require_user)
+    files: list[UploadFile] = File(...), identity: Identity = Depends(require_user)
 ):
     if not files:
         raise HTTPException(400, "No files uploaded")

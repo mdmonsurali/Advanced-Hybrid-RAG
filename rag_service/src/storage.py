@@ -20,7 +20,6 @@ import asyncio
 import json as _json
 import logging
 import os
-from typing import Optional
 
 from minio import Minio
 from minio.deleteobjects import DeleteObject
@@ -35,7 +34,7 @@ MINIO_BUCKET = os.getenv("MINIO_BUCKET", "ocr")
 MINIO_REGION = os.getenv("MINIO_REGION", "us-east-1")
 MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
-minio: Optional[Minio] = None
+minio: Minio | None = None
 # doc_id (str) -> registry entry (doc metadata + index status)
 REGISTRY: dict[str, dict] = {}
 _registry_lock = asyncio.Lock()
@@ -106,7 +105,7 @@ def _put_json(name: str, obj: dict) -> None:
     )
 
 
-async def _read_json(name: str) -> Optional[dict]:
+async def _read_json(name: str) -> dict | None:
     try:
         return _json.loads(await asyncio.to_thread(_get_object_bytes, name))
     except S3Error as e:
@@ -118,15 +117,15 @@ async def _read_json(name: str) -> Optional[dict]:
 # ── ocr_service documents (read-only) ─────────────────────────────────────
 
 
-async def load_meta(doc_id: str) -> Optional[dict]:
+async def load_meta(doc_id: str) -> dict | None:
     return await _read_json(f"documents/{doc_id}/meta.json")
 
 
-async def load_layout(doc_id: str) -> Optional[dict]:
+async def load_layout(doc_id: str) -> dict | None:
     return await _read_json(f"documents/{doc_id}/layout.json")
 
 
-async def load_picture(doc_id: str, rel_path: str) -> Optional[bytes]:
+async def load_picture(doc_id: str, rel_path: str) -> bytes | None:
     """A picture crop ocr_service stored (rel_path: images/picture-N.png)."""
     if not rel_path.startswith("images/") or ".." in rel_path:
         return None
@@ -190,7 +189,7 @@ async def put_index(entry: dict) -> None:
         await asyncio.to_thread(_put_json, f"rag/{entry['doc_id']}/index.json", entry)
 
 
-async def update_index(doc_id: str, **fields) -> Optional[dict]:
+async def update_index(doc_id: str, **fields) -> dict | None:
     async with _registry_lock:
         entry = REGISTRY.get(doc_id)
         if entry is None:

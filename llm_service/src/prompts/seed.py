@@ -19,6 +19,7 @@ import logging
 
 import tracing
 from generation import answer, compression, figures, query_analysis, tools, validation  # noqa: F401  (register every prompt)
+
 from prompts import registry
 
 

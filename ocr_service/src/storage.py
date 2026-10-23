@@ -32,8 +32,8 @@ import json as _json
 import logging
 import os
 import uuid as _uuid
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from minio import Minio
 from minio.deleteobjects import DeleteObject
@@ -54,8 +54,8 @@ UPLOAD_CONCURRENCY = int(os.getenv("MINIO_UPLOAD_CONCURRENCY", "8"))
 
 # ── Module state ────────
 
-minio: Optional[Minio] = None
-_upload_sem: Optional[asyncio.Semaphore] = None
+minio: Minio | None = None
+_upload_sem: asyncio.Semaphore | None = None
 # doc_id -> metadata dict (owner_id as UUID, timestamps as ISO strings).
 _index: dict[_uuid.UUID, dict] = {}
 _meta_lock = asyncio.Lock()
@@ -196,7 +196,7 @@ class _BytesReader:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _meta_object_name(doc_id: _uuid.UUID) -> str:
@@ -305,12 +305,12 @@ async def get_image_bytes(doc_id: _uuid.UUID, filename: str) -> tuple[str, str, 
     return os.path.basename(filename), IMAGE_CONTENT_TYPE, body
 
 
-async def fetch_document(doc_id: _uuid.UUID) -> Optional[dict]:
+async def fetch_document(doc_id: _uuid.UUID) -> dict | None:
     meta = _index.get(doc_id)
     return dict(meta) if meta else None
 
 
-def _filtered(owner_id: Optional[_uuid.UUID], status: Optional[str]) -> list[dict]:
+def _filtered(owner_id: _uuid.UUID | None, status: str | None) -> list[dict]:
     return [
         m
         for m in _index.values()
@@ -319,9 +319,7 @@ def _filtered(owner_id: Optional[_uuid.UUID], status: Optional[str]) -> list[dic
     ]
 
 
-async def count_documents(
-    owner_id: Optional[_uuid.UUID] = None, status: Optional[str] = None
-) -> int:
+async def count_documents(owner_id: _uuid.UUID | None = None, status: str | None = None) -> int:
     """Total documents matching the same filters list_documents uses."""
     return len(_filtered(owner_id, status))
 
@@ -393,8 +391,8 @@ _LIST_FIELDS = (
 async def list_documents(
     limit: int = 50,
     offset: int = 0,
-    status: Optional[str] = None,
-    owner_id: Optional[_uuid.UUID] = None,
+    status: str | None = None,
+    owner_id: _uuid.UUID | None = None,
 ) -> list[dict]:
     rows = sorted(_filtered(owner_id, status), key=lambda m: m["created_at"], reverse=True)
     out = [{k: m.get(k) for k in _LIST_FIELDS} for m in rows[offset : offset + limit]]

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 
-from prompts import registry
 from schemas import ToolSpec
+
+from prompts import registry
 
 SELECT_TOOLS_SYSTEM = registry.register(
     "rag/select-tools",

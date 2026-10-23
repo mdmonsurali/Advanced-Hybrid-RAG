@@ -29,18 +29,17 @@ import logging
 import os
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from starlette.responses import JSONResponse
-
 import storage
 import tracing
 from embeddings import dense, reranker, sparse
+from fastapi import Depends, FastAPI, HTTPException, Request
 from identity import Identity, require_user
 from ingestion import pipeline
 from mcp_servers import gdrive_server, websearch_server
 from query_route import router
 from query_route.executors import execute
 from schemas import AccessUpdate, RetrieveRequest, RetrieveResponse, RouteRequest, RouteResponse
+from starlette.responses import JSONResponse
 from vectordb import qdrant_store
 
 log = logging.getLogger("rag_service")

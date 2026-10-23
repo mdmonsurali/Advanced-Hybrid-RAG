@@ -8,7 +8,7 @@ it with the MCP_TOKEN bearer token; rag_service's router calls it for the
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -25,7 +25,7 @@ mcp = FastMCP(
 async def search_files(
     query: Annotated[str, Field(description="Words to find in file names or contents")],
     mime_types: Annotated[
-        Optional[list[str]], Field(description="Restrict to these MIME types")
+        list[str] | None, Field(description="Restrict to these MIME types")
     ] = None,
     limit: Annotated[int, Field(ge=1, le=25)] = 10,
 ) -> list[dict]:

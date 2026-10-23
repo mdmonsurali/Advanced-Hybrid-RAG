@@ -95,7 +95,6 @@ def _fetch(name: str):
     if not use_langfuse() or now < _down_until or now < _retry_after.get(name, 0.0):
         return None, None
     from langfuse.api import NotFoundError
-
     from tracing import langfuse
 
     pinned = VERSIONS.get(name)
@@ -187,7 +186,6 @@ def seed_missing() -> None:
         log.info("[prompts] source=%s: using the local prompt texts", status()["source"])
         return
     from langfuse.api import NotFoundError
-
     from tracing import langfuse
 
     for name in sorted(LOCAL):

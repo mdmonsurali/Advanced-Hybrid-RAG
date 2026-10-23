@@ -20,9 +20,9 @@ jobs:
       # Pinned: a new ruff release can change formatting and fail CI with no code change.
       - run: pip install ruff==0.17.1
 
-      # Only real errors: syntax errors, undefined names, etc. (not style).
+      # Full lint: ruff's rule set, with project exceptions in ruff.toml.
       - run: >
-          ruff check --select E9,F63,F7,F82
+          ruff check
           auth_service llm_service ocr_service orchestrator_service
           rag_service ui_service langfuse_service
 

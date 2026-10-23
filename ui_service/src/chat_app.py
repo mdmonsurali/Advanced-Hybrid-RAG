@@ -14,12 +14,10 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Optional
-
-import chainlit as cl
-from chainlit.config import config as cl_config
 
 import auth_client
+import chainlit as cl
+from chainlit.config import config as cl_config
 from chat import ingestion, mcp_tools, pipeline_stream, settings
 from chat.data_layer import MinioDataLayer
 from chat.identity import (
@@ -66,7 +64,7 @@ else:
 
 
 @cl.header_auth_callback
-async def header_auth(headers) -> Optional[cl.User]:
+async def header_auth(headers) -> cl.User | None:
     sid = session_cookie_from(headers.get("cookie", ""))
     user = await auth_client.validate(sid or "")
     if user is None or user.must_change_password:
@@ -100,7 +98,7 @@ async def _init_session(history: list[dict] | None = None) -> None:
 
 
 @cl.set_starters
-async def starters(user: Optional[cl.User] = None, language: Optional[str] = None):
+async def starters(user: cl.User | None = None, language: str | None = None):
     items = [
         cl.Starter(
             label="Ask a fact", message="What does the agreement say about late payment interest?"
@@ -176,8 +174,8 @@ async def on_message(message: cl.Message):
 async def answer(
     question: str,
     headers: dict,
-    command: Optional[str] = None,
-    route_hint: Optional[list[str]] = None,
+    command: str | None = None,
+    route_hint: list[str] | None = None,
 ) -> None:
     prefs = cl.user_session.get("settings") or settings.DEFAULTS
     options = settings.pipeline_options(prefs, command)
