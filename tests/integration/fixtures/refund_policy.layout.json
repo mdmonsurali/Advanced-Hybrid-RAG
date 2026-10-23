@@ -1,0 +1,249 @@
+{
+ "schema_name": "DoclingDocument",
+ "version": "1.10.0",
+ "name": "refund-policy",
+ "furniture": {
+  "self_ref": "#/furniture",
+  "children": [],
+  "content_layer": "furniture",
+  "name": "_root_",
+  "label": "unspecified"
+ },
+ "body": {
+  "self_ref": "#/body",
+  "children": [
+   {
+    "$ref": "#/texts/0"
+   },
+   {
+    "$ref": "#/texts/1"
+   },
+   {
+    "$ref": "#/texts/2"
+   },
+   {
+    "$ref": "#/texts/3"
+   },
+   {
+    "$ref": "#/texts/4"
+   },
+   {
+    "$ref": "#/texts/5"
+   },
+   {
+    "$ref": "#/texts/6"
+   }
+  ],
+  "content_layer": "body",
+  "name": "_root_",
+  "label": "unspecified"
+ },
+ "groups": [],
+ "texts": [
+  {
+   "self_ref": "#/texts/0",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "label": "title",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 50.0,
+      "t": 50.0,
+      "r": 550.0,
+      "b": 80.0,
+      "coord_origin": "TOPLEFT"
+     },
+     "charspan": [
+      0,
+      24
+     ]
+    }
+   ],
+   "orig": "Acme Store Refund Policy",
+   "text": "Acme Store Refund Policy"
+  },
+  {
+   "self_ref": "#/texts/1",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "label": "section_header",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 50.0,
+      "t": 50.0,
+      "r": 550.0,
+      "b": 80.0,
+      "coord_origin": "TOPLEFT"
+     },
+     "charspan": [
+      0,
+      13
+     ]
+    }
+   ],
+   "orig": "Refund window",
+   "text": "Refund window",
+   "level": 1
+  },
+  {
+   "self_ref": "#/texts/2",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "label": "text",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 50.0,
+      "t": 50.0,
+      "r": 550.0,
+      "b": 80.0,
+      "coord_origin": "TOPLEFT"
+     },
+     "charspan": [
+      0,
+      113
+     ]
+    }
+   ],
+   "orig": "Customers can return any unused item within 45 days of delivery for a full refund to the original payment method.",
+   "text": "Customers can return any unused item within 45 days of delivery for a full refund to the original payment method."
+  },
+  {
+   "self_ref": "#/texts/3",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "label": "section_header",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 50.0,
+      "t": 50.0,
+      "r": 550.0,
+      "b": 80.0,
+      "coord_origin": "TOPLEFT"
+     },
+     "charspan": [
+      0,
+      14
+     ]
+    }
+   ],
+   "orig": "Shipping costs",
+   "text": "Shipping costs",
+   "level": 1
+  },
+  {
+   "self_ref": "#/texts/4",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "label": "text",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 50.0,
+      "t": 50.0,
+      "r": 550.0,
+      "b": 80.0,
+      "coord_origin": "TOPLEFT"
+     },
+     "charspan": [
+      0,
+      102
+     ]
+    }
+   ],
+   "orig": "Return shipping is free for orders above 80 euros. Smaller orders pay a flat return fee of 4.90 euros.",
+   "text": "Return shipping is free for orders above 80 euros. Smaller orders pay a flat return fee of 4.90 euros."
+  },
+  {
+   "self_ref": "#/texts/5",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "label": "section_header",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 50.0,
+      "t": 50.0,
+      "r": 550.0,
+      "b": 80.0,
+      "coord_origin": "TOPLEFT"
+     },
+     "charspan": [
+      0,
+      10
+     ]
+    }
+   ],
+   "orig": "Exceptions",
+   "text": "Exceptions",
+   "level": 1
+  },
+  {
+   "self_ref": "#/texts/6",
+   "parent": {
+    "$ref": "#/body"
+   },
+   "children": [],
+   "content_layer": "body",
+   "label": "text",
+   "prov": [
+    {
+     "page_no": 1,
+     "bbox": {
+      "l": 50.0,
+      "t": 50.0,
+      "r": 550.0,
+      "b": 80.0,
+      "coord_origin": "TOPLEFT"
+     },
+     "charspan": [
+      0,
+      75
+     ]
+    }
+   ],
+   "orig": "Gift cards, perishable food and personalised engravings cannot be refunded.",
+   "text": "Gift cards, perishable food and personalised engravings cannot be refunded."
+  }
+ ],
+ "pictures": [],
+ "tables": [],
+ "key_value_items": [],
+ "form_items": [],
+ "pages": {
+  "1": {
+   "size": {
+    "width": 612.0,
+    "height": 792.0
+   },
+   "page_no": 1
+  }
+ }
+}

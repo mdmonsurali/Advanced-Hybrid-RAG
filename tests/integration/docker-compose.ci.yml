@@ -1,0 +1,19 @@
+# Overrides for the integration tests (CI): publish the internal ports the tests call and
+# switch off what CI doesn't run (Langfuse, the LLM for figure descriptions, chat history).
+#   docker compose -f docker-compose.yml -f tests/integration/docker-compose.ci.yml ...
+services:
+  rag_service:
+    ports:
+      - "8003:8003"
+    environment:
+      - LANGFUSE_TRACING_ENABLED=false
+      - RAG_FIGURE_DESCRIPTIONS=false
+
+  minio:
+    ports:
+      - "9000:9000"
+
+  ui_service:
+    environment:
+      - LANGFUSE_TRACING_ENABLED=false
+      - CHAT_HISTORY_ENABLED=false

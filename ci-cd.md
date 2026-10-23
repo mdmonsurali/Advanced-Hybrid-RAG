@@ -4,7 +4,7 @@ CI/CD for this repo runs on **GitHub Actions**. The workflow file is
 [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 - **CI (Continuous Integration):** every pull request and every push to `main` is checked
-  automatically on GitHub's machines (lint, config validation, Docker builds).
+  automatically on GitHub's machines (lint, type checks, unit and integration tests, Docker builds).
 - **CD (Continuous Delivery):** after the checks pass, the built images are published so they
   can be pulled instead of rebuilt.
 
@@ -16,13 +16,14 @@ Results are on the [Actions tab](https://github.com/mdmonsurali/Advanced-Hybrid-
 | Job | What it checks | Services |
 |---|---|---|
 | `lint` | Full `ruff check` rule set (project exceptions in `ruff.toml`), and formatting (`ruff format --check`) | all |
-| `type-check` | `pyright` in basic mode (`pyrightconfig.json`), run against each service's real libraries | all 6 |
+| `test` | Per service, with its real libraries: `pyright` in basic mode (`pyrightconfig.json`), then the unit tests in `<service>/tests` | all 6 |
 | `compose` | `docker-compose.yml` is valid, using `.env.example` | n/a |
 | `dockerfile-check` | Dockerfile mistakes and bad practices (`docker buildx build --check`) | all 6 |
-| `build` | Image builds end to end | ui, auth, orchestrator, rag |
+| `build` | Image builds end to end | orchestrator |
+| `integration` | Builds and starts auth, ui and rag (CPU models) with Qdrant and MinIO, then runs `tests/integration` against them over HTTP | auth, ui, rag |
 
 `ocr_service` (~16 GB) and `llm_service` (~64 GB) are too large to build on a free GitHub runner,
-so they only get `lint` and `dockerfile-check`.
+and need a GPU, so they get `lint`, `test` and `dockerfile-check` but no image build.
 
 ## Steps
 
@@ -77,10 +78,29 @@ so they only get `lint` and `dockerfile-check`.
 
 ### Phase 3: Tests
 
-- [ ] **Step 10: Unit tests.** Add `pytest` tests per service (e.g. app starts, `/health`
-  responds, models mocked) and run them in CI.
-- [ ] **Step 11: Integration tests.** Start the non-GPU parts (Qdrant, MinIO, RAG API with small
-  models) and test them together.
+- [x] **Step 10: Unit tests.** `pytest` 9.1.1 (`requirements-test.txt`), 184 tests in
+  `<service>/tests`. Each service has a `pytest.ini`, and the CI `test` job runs the tests after pyright.
+  - **No real services needed:** fakes stand in for Qdrant, MinIO, the LLM, Langfuse and the other
+    services, so the whole suite runs in seconds.
+  - **Covered:**
+    - auth: login, sessions and the master / admin / user rules
+    - orchestrator: the 10-step pipeline (retries, fallbacks, errors), request validation and GPU-swap policy
+    - llm: PII masking, the validation verdict, compression and citations
+    - rag: access-control filters, routing rules and the SSRF guard on web fetches
+    - ocr: who may read, share or delete which documents
+    - ui: the login gate, safe redirects and links, and identity headers stripped from browser requests
+  - `BLE001` (`except Exception`) is still switched off. With the tests in place it can be narrowed
+    service by service later.
+- [x] **Step 11: Integration tests.** The CI job `integration` builds and starts auth_service,
+  ui_service, rag_service (real CPU models), Qdrant and MinIO with `docker compose`.
+  `tests/integration/docker-compose.ci.yml` publishes the internal ports and turns off Langfuse.
+  `tests/integration` then checks, over HTTP:
+  - login through ui_service into auth_service
+  - a document stored in MinIO the way ocr_service writes it is chunked, embedded, written to Qdrant
+    and found again by hybrid search and rerank
+  - private / shared access is applied, and deleting the document removes it from search
+  - The LLM, OCR and orchestrator need a GPU and are not started. rag_service's fallback without
+    the LLM (heuristic metadata) is what gets tested.
 
 ### Phase 4: Security and delivery
 
@@ -103,4 +123,8 @@ so they only get `lint` and `dockerfile-check`.
   errors as CI once the service's libraries are installed in the selected interpreter. To match CI on
   the command line, run `pip install pyright==1.1.414 -r <service>/requirements.txt`, then
   `pyright --pythonpath "$(which python)" <service>/src`.
+- **Run the unit tests locally:** in an environment with the service's libraries, run
+  `pip install -r requirements-test.txt`, then `cd <service>` and `python -m pytest`.
+- **Integration tests locally:** they start containers with the stack's fixed container names
+  and volumes, so run them on a machine without your own running stack (CI does this).
 - **Secrets:** `.env` is gitignored and never reaches CI. CI uses `.env.example` (dummy values).

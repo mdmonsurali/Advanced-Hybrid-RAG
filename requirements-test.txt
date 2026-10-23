@@ -1,0 +1,2 @@
+# Test runner for every service's unit tests (installed next to the service's requirements.txt).
+pytest==9.1.1
