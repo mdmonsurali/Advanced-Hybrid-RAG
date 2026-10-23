@@ -75,6 +75,8 @@ async def ingest(doc_id: str) -> dict:
 
 async def _index(doc_id: str, meta: dict, entry: dict) -> dict:
     """STEP 1-2 for one document: chunk → metadata → embed → upsert."""
+    chunker = _chunker
+    assert chunker is not None, "pipeline.init() not called"
     try:
         layout = await storage.load_layout(doc_id)
         if layout is None:
@@ -83,7 +85,7 @@ async def _index(doc_id: str, meta: dict, entry: dict) -> dict:
 
         row_pages = await asyncio.to_thread(merge_cross_page_tables, doc)
         descriptions, figure_status = await figures.describe(doc_id, doc)
-        chunks = await asyncio.to_thread(chunk_document, doc, _chunker, descriptions, row_pages)
+        chunks = await asyncio.to_thread(chunk_document, doc, chunker, descriptions, row_pages)
         doc_meta = await metadata.document_metadata(meta, chunks)
         payloads = metadata.chunk_payloads(meta, doc_meta, chunks)
 
@@ -199,7 +201,7 @@ async def sync(upgrade_heuristic: bool = False) -> dict:
                 )
             )
         )
-        if stale:
+        if stale or entry is None:  # entry is None is already stale
             if schedule(doc_id):
                 queued.append(doc_id)
             continue

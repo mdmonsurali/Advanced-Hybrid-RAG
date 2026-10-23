@@ -141,6 +141,6 @@ def merge_cross_page_tables(doc: DoclingDocument) -> RowPages:
         elif head is not None and not _ignorable(doc, item, head):
             head = None
     if merged:
-        doc.delete_items(node_items=merged)  # renumbers the remaining refs
+        doc.delete_items(node_items=list(merged))  # renumbers the remaining refs
         log.info("[chunk] merged %d cross-page table continuation(s)", len(merged))
     return {table.self_ref: pages for table, pages in starts.values()}

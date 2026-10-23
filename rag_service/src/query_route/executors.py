@@ -23,7 +23,7 @@ from hybrid_retrieval.rerank import rerank
 from hybrid_retrieval.search import search_docs
 from identity import Identity
 from mcp_servers.client import gdrive_evidence, web_evidence
-from schemas import Evidence, QueryPlan, RetrieveResponse, RetrieveStats
+from schemas import Evidence, QueryPlan, RetrieveResponse, RetrieveStats, RouteStatus
 
 from query_route.catalog import catalog_evidence
 
@@ -60,7 +60,7 @@ async def execute(
     external: list[Evidence] | None = None,
     debug: bool = False,
 ) -> RetrieveResponse:
-    status: dict[str, str] = {}
+    status: dict[str, RouteStatus] = {}
     per_route: dict[str, int] = {}
     candidates: list[tuple[Evidence, str]] = []
     passthrough: list[Evidence] = []
@@ -96,7 +96,7 @@ async def execute(
     results = await asyncio.gather(*(runners[r]() for r in names), return_exceptions=True)
 
     for name, res in zip(names, results):
-        if isinstance(res, Exception):
+        if isinstance(res, BaseException):
             log.warning("[route:%s] unavailable: %s", name, res)
             status[name] = "unavailable"
             per_route[name] = 0

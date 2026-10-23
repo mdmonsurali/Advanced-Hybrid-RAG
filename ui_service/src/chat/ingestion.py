@@ -51,8 +51,7 @@ async def _wait_for_index(doc_id: str, step: cl.Step, head: str) -> dict:
     deadline = time.monotonic() + INGEST_TIMEOUT_SEC
     while time.monotonic() < deadline:
         entry = await backend.index_status(doc_id)
-        status = (entry or {}).get("status")
-        if status in {"ok", "error"}:
+        if entry and entry.get("status") in {"ok", "error"}:
             return entry
         step.output = f"{head}\n- ⏳ Indexing (chunking, metadata, embeddings)…"
         await step.update()

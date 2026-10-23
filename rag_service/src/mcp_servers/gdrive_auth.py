@@ -27,7 +27,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from google_auth_oauthlib.flow import InstalledAppFlow
+    # Installed on the host only (see step 2 above), not in the rag_service image.
+    from google_auth_oauthlib.flow import InstalledAppFlow  # pyright: ignore[reportMissingImports]
 
     secrets = Path(args.secrets)
     client_file = secrets / "credentials.json"

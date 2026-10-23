@@ -26,7 +26,7 @@ import httpx
 import llm_api
 from identity import Identity
 from mcp_servers import gdrive_api
-from schemas import QueryPlan, RouteResponse
+from schemas import QueryPlan, Route, RouteResponse
 
 log = logging.getLogger("rag_service.router")
 
@@ -54,8 +54,8 @@ _WEB_RE = re.compile(
 )
 
 
-def available_routes(identity: Identity) -> list[str]:
-    routes = ["docs", "catalog", "direct"]
+def available_routes(identity: Identity) -> list[Route]:
+    routes: list[Route] = ["docs", "catalog", "direct"]
     if GDRIVE_ENABLED and identity.role in GDRIVE_ALLOWED_ROLES and gdrive_api.is_configured():
         routes.append("gdrive")
     if WEBSEARCH_ENABLED:
@@ -63,7 +63,7 @@ def available_routes(identity: Identity) -> list[str]:
     return routes
 
 
-def _rules(plan: QueryPlan, available: list[str]) -> tuple[list[str], str] | None:
+def _rules(plan: QueryPlan, available: list[Route]) -> tuple[list[Route], str] | None:
     text = f"{plan.standalone_question} {plan.rewritten}"
     if plan.intent == "chitchat":
         return ["direct"], "small talk needs no retrieval"
@@ -81,12 +81,12 @@ def _rules(plan: QueryPlan, available: list[str]) -> tuple[list[str], str] | Non
 async def decide(
     plan: QueryPlan,
     identity: Identity,
-    route_hint: list[str] | None = None,
-    deny_routes: list[str] | None = None,
+    route_hint: list[Route] | None = None,
+    deny_routes: list[Route] | None = None,
 ) -> RouteResponse:
     deny = set(deny_routes or [])
-    available = [r for r in available_routes(identity) if r not in deny]
-    forced = [r for r in dict.fromkeys(route_hint or []) if r in available]
+    available: list[Route] = [r for r in available_routes(identity) if r not in deny]
+    forced: list[Route] = [r for r in dict.fromkeys(route_hint or []) if r in available]
     if forced:
         return RouteResponse(
             routes=forced, reason="route chosen by the user", decided_by="user", available=available
@@ -105,7 +105,7 @@ async def decide(
         return RouteResponse(routes=routes, reason=reason, decided_by="rules", available=available)
     try:
         out = await llm_api.route(plan.model_dump(), available)
-        routes = [r for r in out.get("routes", []) if r in available] or ["docs"]
+        routes: list[Route] = [r for r in out.get("routes", []) if r in available] or ["docs"]
         return RouteResponse(
             routes=routes, reason=out.get("reason", ""), decided_by="llm", available=available
         )

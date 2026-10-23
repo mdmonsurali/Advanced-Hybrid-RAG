@@ -28,7 +28,7 @@ def _link(c: dict) -> str | None:
 
 
 def _where(c: dict) -> str:
-    parts = [c.get("source") or _ROUTE_LABEL.get(c.get("route"), "Source")]
+    parts = [c.get("source") or _ROUTE_LABEL.get(c.get("route") or "", "Source")]
     if c.get("page"):
         parts.append(f"p. {c['page']}")
     return " · ".join(parts)
@@ -41,7 +41,10 @@ def _quote(text: str) -> str:
 def source_elements(citations: list[dict]) -> list[cl.Text]:
     elements = []
     for c in citations:
-        body = [f"**{_where(c)}**", f"_{_ROUTE_LABEL.get(c.get('route'), c.get('route', ''))}_"]
+        body = [
+            f"**{_where(c)}**",
+            f"_{_ROUTE_LABEL.get(c.get('route') or '', c.get('route', ''))}_",
+        ]
         if c.get("snippet"):
             body += ["", _quote(c["snippet"])]
         link = _link(c)

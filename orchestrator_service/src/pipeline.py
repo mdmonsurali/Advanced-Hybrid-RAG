@@ -104,6 +104,8 @@ async def run(
             lease_id = data["id"]
         else:
             yield "gpu_wait", data
+    if lease_id is None:
+        raise RuntimeError("wait_lease ended without a lease")
     async with gpu_swap.renewing(lease_id):
         async for event, data in _traced(question, history, identity, options):
             yield event, data

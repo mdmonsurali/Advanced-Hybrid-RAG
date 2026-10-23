@@ -34,6 +34,7 @@ if not ENABLED:
     os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
 from langfuse import get_client, propagate_attributes  # must stay below the env setup above
+from langfuse.types import TraceContext
 
 if not ENABLED:  # off on purpose: skip the SDK's "initialized without public_key" warning
     logging.getLogger("langfuse").setLevel(logging.ERROR)
@@ -80,7 +81,7 @@ def outgoing_headers() -> dict[str, str]:
     return {TRACE_HEADER: trace_id, PARENT_HEADER: span_id} if trace_id and span_id else {}
 
 
-def new_trace() -> dict:
+def new_trace() -> TraceContext:
     """Context for a fresh trace. Needed because FastAPI wraps every request
     in an OpenTelemetry span of its own that Langfuse doesn't export; a root
     observation nested under it would point at a parent that never arrives."""
@@ -140,11 +141,13 @@ def score_answer(trace_id: str | None, answer: dict) -> None:
         scores.append(("answer_confidence", float(answer.get("confidence") or 0.0), "NUMERIC"))
     for name, value, data_type in scores:
         try:
-            langfuse.create_score(
+            # Each (value, data_type) pair is valid, but the mixed list hides which
+            # create_score overload (numeric vs categorical) applies.
+            langfuse.create_score(  # pyright: ignore[reportCallIssue]
                 trace_id=trace_id,
                 name=name,
                 value=value,
-                data_type=data_type,
+                data_type=data_type,  # pyright: ignore[reportArgumentType]
                 comment=verdict.get("reason") if name == "outcome" else None,
             )
         except Exception as e:  # scores are best-effort

@@ -62,7 +62,7 @@ async def analyze(question: str, history: list[Turn]) -> QueryPlan:
 
 async def route(plan: QueryPlan, available: list[Route]) -> RouteOutput:
     out = await chat_json(route_messages(plan, available), RouteOutput, max_tokens=256)
-    routes = [r for r in dict.fromkeys(out.routes) if r in available]
+    routes: list[Route] = [r for r in dict.fromkeys(out.routes) if r in available]
     if not routes:
         routes = ["docs"] if "docs" in available else [available[0]]
     return RouteOutput(routes=routes, reason=out.reason)

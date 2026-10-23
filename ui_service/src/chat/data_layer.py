@@ -23,8 +23,10 @@ import logging
 import os
 import uuid
 from collections import OrderedDict
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from chainlit.data.base import BaseDataLayer
 from chainlit.types import (
@@ -107,13 +109,19 @@ class MinioDataLayer(BaseDataLayer):
 
     def _put(self, key: str, body: bytes, content_type: str = "application/json") -> None:
         self.client.put_object(
-            MINIO_BUCKET, key, data=_Bytes(body), length=len(body), content_type=content_type
+            MINIO_BUCKET,
+            key,
+            # minio declares BinaryIO but only calls .read(), which _Bytes provides.
+            data=_Bytes(body),  # pyright: ignore[reportArgumentType]
+            length=len(body),
+            content_type=content_type,
         )
 
     def _remove_prefix(self, prefix: str) -> None:
         keys = [
             DeleteObject(o.object_name)
             for o in self.client.list_objects(MINIO_BUCKET, prefix=prefix, recursive=True)
+            if o.object_name
         ]
         for err in self.client.remove_objects(MINIO_BUCKET, keys):
             log.warning("minio delete error: %s", err)
@@ -232,7 +240,7 @@ class MinioDataLayer(BaseDataLayer):
 
     # ── Steps ───────────────────────────────────────────────────────────
 
-    async def _upsert_step(self, step_dict: dict) -> None:
+    async def _upsert_step(self, step_dict: Mapping[str, Any]) -> None:
         thread_id = step_dict.get("threadId")
         if not thread_id:
             return
@@ -292,7 +300,7 @@ class MinioDataLayer(BaseDataLayer):
                 el["url"] = f"{ELEMENT_URL_PREFIX}/{thread_id}/{element.id}"
         async with self._lock(thread_id):
             thread = await self._load_or_new(thread_id)
-            thread["elements"] = [e for e in thread["elements"] if e["id"] != el["id"]] + [el]
+            thread["elements"] = [e for e in thread["elements"] if e["id"] != element.id] + [el]
             await self._save(thread)
 
     async def get_element(self, thread_id: str, element_id: str):
@@ -426,8 +434,8 @@ class MinioDataLayer(BaseDataLayer):
         trace_id = None
         if thread_id:
             async with self._lock(thread_id):
-                thread = await self._load(thread_id)
-                for step in (thread or {}).get("steps", []):
+                thread = await self._load(thread_id) or {}  # {}: no steps, nothing saved
+                for step in thread.get("steps", []):
                     if step["id"] == feedback.forId:
                         step["feedback"] = {
                             "id": feedback_id,
@@ -458,8 +466,8 @@ class MinioDataLayer(BaseDataLayer):
         thread_id = self._step_thread.get(step_id) if step_id else None
         if thread_id:
             async with self._lock(thread_id):
-                thread = await self._load(thread_id)
-                for step in (thread or {}).get("steps", []):
+                thread = await self._load(thread_id) or {}  # {}: no steps, nothing saved
+                for step in thread.get("steps", []):
                     if step["id"] == step_id:
                         step.pop("feedback", None)
                         await self._save(thread)

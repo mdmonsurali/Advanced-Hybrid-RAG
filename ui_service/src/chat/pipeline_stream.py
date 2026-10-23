@@ -175,7 +175,7 @@ def _render(event: str, d: dict) -> str:
 
 def _footer(final: dict) -> str:
     v = final.get("verdict") or {}
-    bits = [_BADGES.get(final.get("action"), final.get("action", ""))]
+    bits = [_BADGES.get(final.get("action") or "", final.get("action", ""))]
     if v.get("grounded_score") is not None and final.get("action") != "clarify":
         bits.append(f"groundedness {round(100 * v['grounded_score'])}%")
     if final.get("routes"):

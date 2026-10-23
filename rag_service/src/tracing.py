@@ -23,7 +23,7 @@ import os
 import re
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Literal
 
 ENABLED = (
     os.getenv("LANGFUSE_TRACING_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -34,6 +34,20 @@ if not ENABLED:
     os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
 from langfuse import get_client, propagate_attributes  # must stay below the env setup above
+from langfuse.types import TraceContext
+
+# Observation types Langfuse accepts for `as_type` (its own alias lives in a private module).
+ObservationType = Literal[
+    "span",
+    "chain",
+    "tool",
+    "retriever",
+    "evaluator",
+    "generation",
+    "agent",
+    "embedding",
+    "guardrail",
+]
 
 if not ENABLED:  # off on purpose: skip the SDK's "initialized without public_key" warning
     logging.getLogger("langfuse").setLevel(logging.ERROR)
@@ -84,11 +98,11 @@ def hits(evidence: list) -> list[dict]:
     ]
 
 
-def incoming_context(headers: Mapping[str, str]) -> dict | None:
+def incoming_context(headers: Mapping[str, str]) -> TraceContext | None:
     trace_id = (headers.get(TRACE_HEADER) or "").strip().lower()
     if not ENABLED or not _HEX32.match(trace_id):
         return None
-    ctx = {"trace_id": trace_id}
+    ctx: TraceContext = {"trace_id": trace_id}
     parent = (headers.get(PARENT_HEADER) or "").strip().lower()
     if _HEX16.match(parent):
         ctx["parent_span_id"] = parent
@@ -104,7 +118,7 @@ def outgoing_headers() -> dict[str, str]:
     return {TRACE_HEADER: trace_id, PARENT_HEADER: span_id} if trace_id and span_id else {}
 
 
-def new_trace() -> dict:
+def new_trace() -> TraceContext:
     """Context for a fresh trace. Needed because FastAPI wraps every request
     in an OpenTelemetry span of its own that Langfuse doesn't export; a root
     observation nested under it would point at a parent that never arrives."""
@@ -115,7 +129,7 @@ def new_trace() -> dict:
 def observe(
     name: str,
     *,
-    as_type: str = "span",
+    as_type: ObservationType = "span",
     input: Any = None,
     metadata: Any = None,
     headers: Mapping[str, str] | None = None,

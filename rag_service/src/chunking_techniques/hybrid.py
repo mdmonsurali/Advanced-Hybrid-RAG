@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import cast
 
+from docling_core.transforms.chunker.doc_chunk import DocMeta
 from docling_core.transforms.chunker.hierarchical_chunker import (
     ChunkingDocSerializer,
     ChunkingSerializerProvider,
@@ -91,7 +93,8 @@ def _resolve(doc: DoclingDocument, doc_items) -> list:
     out = []
     for it in doc_items:
         try:
-            out.append(RefItem(cref=it.self_ref).resolve(doc))
+            # `cref` is the pydantic field name of the `$ref` alias; pyright only sees the alias.
+            out.append(RefItem(cref=it.self_ref).resolve(doc))  # pyright: ignore[reportCallIssue]
         except Exception:
             out.append(it)
     return out
@@ -145,8 +148,9 @@ def chunk_document(
         body = chunk.text.strip()
         if not body:
             continue
-        items = _resolve(doc, chunk.meta.doc_items or [])
-        headings = list(chunk.meta.headings or [])
+        meta = cast(DocMeta, chunk.meta)  # HybridChunker always yields DocMeta
+        items = _resolve(doc, meta.doc_items or [])
+        headings = list(meta.headings or [])
         heading_path = " > ".join(headings)
         start, end = _pages(items)
         pos = min((order.get(it.self_ref, 0) for it in items), default=0)
@@ -175,7 +179,10 @@ def chunk_document(
             ctype = "table"
         else:
             piece = figure_chunk(
-                doc, item, heading_path, figure_descriptions.get(item.self_ref, "")
+                doc,
+                cast(PictureItem, item),  # floats are tables or pictures
+                heading_path,
+                figure_descriptions.get(item.self_ref, ""),
             )
             pieces = [(*piece, None)] if piece else []
             ctype = "figure"
