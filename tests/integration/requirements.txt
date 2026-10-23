@@ -1,0 +1,4 @@
+# Integration tests run on the CI machine and talk to the containers over published ports.
+pytest==9.1.1
+httpx==0.28.1
+minio==7.2.20

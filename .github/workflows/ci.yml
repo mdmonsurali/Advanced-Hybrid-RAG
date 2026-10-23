@@ -24,16 +24,18 @@ jobs:
       - run: >
           ruff check
           auth_service llm_service ocr_service orchestrator_service
-          rag_service ui_service langfuse_service
+          rag_service ui_service langfuse_service tests
 
       # Code must match `ruff format` (settings in ruff.toml). Fix locally with: ruff format <dirs>
       - run: >
           ruff format --check
           auth_service llm_service ocr_service orchestrator_service
-          rag_service ui_service langfuse_service
+          rag_service ui_service langfuse_service tests
 
-  # pyright (settings in pyrightconfig.json) against each service's real libraries.
-  type-check:
+  # Per service, against its real libraries: pyright (pyrightconfig.json), then the unit
+  # tests in <service>/tests (fakes stand in for Qdrant, MinIO, the LLM and other services).
+  test:
+    name: test (${{ matrix.service }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -54,14 +56,21 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: ${{ matrix.service }}/requirements.txt
+          cache-dependency-path: |
+            ${{ matrix.service }}/requirements.txt
+            requirements-test.txt
 
       - name: Install libraries
         run: |
           if [ -n "${{ matrix.pre }}" ]; then pip install ${{ matrix.pre }}; fi
-          pip install pyright==1.1.414 -r ${{ matrix.service }}/requirements.txt ${{ matrix.extra }}
+          pip install pyright==1.1.414 -r requirements-test.txt             -r ${{ matrix.service }}/requirements.txt ${{ matrix.extra }}
 
-      - run: pyright --pythonpath "$(which python)" ${{ matrix.service }}/src
+      - name: Type check
+        run: pyright --pythonpath "$(which python)" ${{ matrix.service }}/src
+
+      - name: Unit tests
+        working-directory: ${{ matrix.service }}
+        run: python -m pytest -q
 
   compose:
     runs-on: ubuntu-latest
@@ -85,14 +94,14 @@ jobs:
           -f ${{ matrix.service }}/Dockerfile
           ${{ matrix.service == 'ui_service' && 'ui_service' || '.' }}
 
-  # Fully build the images that fit on a GitHub runner.
+  # Fully build the images that fit on a GitHub runner and are not built by `integration`.
   # ocr_service (~16 GB) and llm_service (~64 GB) are too big, so they only get dockerfile-check.
   build:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [ui_service, auth_service, orchestrator_service, rag_service]
+        service: [orchestrator_service]
     steps:
       - uses: actions/checkout@v5
 
@@ -103,3 +112,38 @@ jobs:
           df -h /
 
       - run: docker compose --env-file .env.example build ${{ matrix.service }}
+
+  # The non-GPU part of the stack running together: auth_service, ui_service, rag_service
+  # (CPU models), Qdrant and MinIO, driven over HTTP by tests/integration.
+  integration:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: docker compose -f docker-compose.yml -f tests/integration/docker-compose.ci.yml --env-file .env.example
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+
+      # --no-deps: ui_service would otherwise also start ocr/orchestrator/llm (GPU).
+      - name: Start the stack
+        run: |
+          $COMPOSE up -d --wait minio qdrant
+          $COMPOSE up -d --build --no-deps --wait --wait-timeout 900 auth_service rag_service ui_service
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r tests/integration/requirements.txt
+
+      - name: Integration tests
+        working-directory: tests/integration
+        run: python -m pytest -v
+
+      - name: Container logs
+        if: failure()
+        run: $COMPOSE logs --no-color --tail 200 auth_service rag_service ui_service

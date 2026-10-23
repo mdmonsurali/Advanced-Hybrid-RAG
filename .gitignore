@@ -21,3 +21,4 @@ secrets/gdrive/*
 
 # Local configuration with secrets (copy .env.example to .env)
 .env
+.pytest_cache/
