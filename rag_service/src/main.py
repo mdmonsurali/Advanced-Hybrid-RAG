@@ -94,11 +94,14 @@ async def lifespan(app: FastAPI):
         await stack.enter_async_context(gdrive_mcp_app.lifespan(gdrive_mcp_app))
         await stack.enter_async_context(websearch_mcp_app.lifespan(websearch_mcp_app))
 
-        await asyncio.gather(
-            asyncio.to_thread(dense.load),
-            asyncio.to_thread(sparse.load),
-            asyncio.to_thread(reranker.load),
-        )
+        # Dense and reranker load one after the other: transformers' meta-device init is
+        # process-global, so two concurrent loads can leave a model on "meta" and crash
+        # startup ("Cannot copy out of meta tensor"). BM25 has no torch model.
+        async def _load_torch_models() -> None:
+            await asyncio.to_thread(dense.load)
+            await asyncio.to_thread(reranker.load)
+
+        await asyncio.gather(_load_torch_models(), asyncio.to_thread(sparse.load))
         _ready["models"] = True
 
         qdrant_store.init_client()
