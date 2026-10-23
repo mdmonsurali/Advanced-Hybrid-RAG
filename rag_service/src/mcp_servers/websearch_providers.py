@@ -147,7 +147,7 @@ def fetch_page(url: str, max_chars: int = 15000) -> dict:
     ) as client:
         resp = client.get(url)
         for _ in range(5):  # follow redirects, re-checking each hop
-            if not resp.is_redirect:
+            if not resp.is_redirect or resp.next_request is None:
                 break
             url = str(resp.next_request.url)
             _assert_public(url)

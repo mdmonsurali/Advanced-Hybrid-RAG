@@ -58,6 +58,7 @@ def _candidates(doc: DoclingDocument) -> list[PictureItem]:
 
 
 def _crop_path(pic: PictureItem) -> str:
+    assert pic.image is not None  # _candidates() only keeps pictures with an image
     uri = pic.image.uri
     return uri.as_posix() if isinstance(uri, PurePath) else str(uri)
 
@@ -96,7 +97,7 @@ async def describe(doc_id: str, doc: DoclingDocument) -> tuple[dict[str, str], s
         try:
             b64, mime = _encode(png)
         except OSError as e:
-            log.warning("[figures] %s: unreadable crop %s: %s", doc_id, pic.image.uri, e)
+            log.warning("[figures] %s: unreadable crop %s: %s", doc_id, _crop_path(pic), e)
             continue
         try:
             resp = await llm_api.describe_figure(

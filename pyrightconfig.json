@@ -1,0 +1,29 @@
+{
+  // Type checking for every service (pyright CLI, CI and VS Code/Pylance read this file).
+  // Libraries come from the Python passed with --pythonpath (one environment per service in CI).
+  "typeCheckingMode": "basic",
+
+  "include": [
+    "auth_service/src",
+    "llm_service/src",
+    "ocr_service/src",
+    "orchestrator_service/src",
+    "rag_service/src",
+    "ui_service/src"
+  ],
+
+  // docling-core's public names (DoclingDocument, PictureItem, ...) are not marked as
+  // re-exported in docling_core.types.doc, although that is the documented import path.
+  "reportPrivateImportUsage": false,
+
+  // Each service's src/ is its import root (e.g. `from chunking_techniques import ...`),
+  // and its Python version matches the service's Dockerfile.
+  "executionEnvironments": [
+    { "root": "auth_service/src", "pythonVersion": "3.11" },
+    { "root": "llm_service/src", "pythonVersion": "3.12" },
+    { "root": "ocr_service/src", "pythonVersion": "3.12" },
+    { "root": "orchestrator_service/src", "pythonVersion": "3.12" },
+    { "root": "rag_service/src", "pythonVersion": "3.12" },
+    { "root": "ui_service/src", "pythonVersion": "3.12" }
+  ]
+}

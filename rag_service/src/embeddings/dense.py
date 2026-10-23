@@ -58,7 +58,10 @@ def dim() -> int:
     getter = (
         getattr(_model, "get_embedding_dimension", None) or _model.get_sentence_embedding_dimension
     )
-    return int(getter())
+    size = getter()
+    if size is None:
+        raise RuntimeError("dense model did not report its embedding dimension")
+    return int(size)
 
 
 def tokenizer():

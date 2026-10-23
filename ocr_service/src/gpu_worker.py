@@ -65,6 +65,8 @@ def _child_ping() -> str:
 def _child_convert(path: str) -> dict:
     import docling_engine
 
+    if _child_converter is None:  # set by _child_init when the worker process starts
+        raise RuntimeError("GPU worker not initialized")
     return docling_engine.convert_with(_child_converter, Path(path)).export_to_dict()
 
 

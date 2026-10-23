@@ -99,7 +99,8 @@ def _put_json(name: str, obj: dict) -> None:
     minio.put_object(
         MINIO_BUCKET,
         name,
-        data=_BytesReader(body),
+        # minio declares BinaryIO but only calls .read(), which _BytesReader provides.
+        data=_BytesReader(body),  # pyright: ignore[reportArgumentType]
         length=len(body),
         content_type="application/json",
     )
@@ -152,11 +153,12 @@ async def list_ocr_documents() -> list[dict]:
         assert minio is not None
         metas = []
         for obj in minio.list_objects(MINIO_BUCKET, prefix="documents/", recursive=True):
-            if obj.object_name.endswith("/meta.json"):
+            name = obj.object_name
+            if name and name.endswith("/meta.json"):
                 try:
-                    metas.append(_json.loads(_get_object_bytes(obj.object_name)))
+                    metas.append(_json.loads(_get_object_bytes(name)))
                 except (S3Error, ValueError) as e:
-                    log.warning("skipping unreadable %s: %s", obj.object_name, e)
+                    log.warning("skipping unreadable %s: %s", name, e)
         return metas
 
     return await asyncio.to_thread(_list)
@@ -170,11 +172,12 @@ async def load_registry() -> None:
         assert minio is not None
         entries = []
         for obj in minio.list_objects(MINIO_BUCKET, prefix="rag/", recursive=True):
-            if obj.object_name.endswith("/index.json"):
+            name = obj.object_name
+            if name and name.endswith("/index.json"):
                 try:
-                    entries.append(_json.loads(_get_object_bytes(obj.object_name)))
+                    entries.append(_json.loads(_get_object_bytes(name)))
                 except (S3Error, ValueError) as e:
-                    log.warning("skipping unreadable %s: %s", obj.object_name, e)
+                    log.warning("skipping unreadable %s: %s", name, e)
         return entries
 
     REGISTRY.clear()
@@ -205,6 +208,7 @@ async def delete_index(doc_id: str) -> None:
         keys = [
             DeleteObject(o.object_name)
             for o in minio.list_objects(MINIO_BUCKET, prefix=f"rag/{doc_id}/", recursive=True)
+            if o.object_name
         ]
         for err in minio.remove_objects(MINIO_BUCKET, keys):
             log.warning("minio delete error: %s", err)

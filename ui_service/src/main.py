@@ -41,6 +41,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 import auth_client
@@ -57,6 +58,9 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from middleware import AuthMiddleware
+
+if TYPE_CHECKING:
+    from chat.data_layer import MinioDataLayer
 
 _HERE = Path(__file__).parent.resolve()
 TEMPLATES_DIR = _HERE / "templates"
@@ -659,7 +663,7 @@ async def list_documents(
     request: Request, limit: int = 50, offset: int = 0, status: str | None = None
 ):
     user = _require_user(request)
-    params = {"limit": limit, "offset": offset}
+    params: dict[str, int | str] = {"limit": limit, "offset": offset}
     if status:
         params["status"] = status
     async with httpx.AsyncClient(timeout=30) as client:
@@ -889,7 +893,7 @@ async def rag_query(request: Request, payload: dict = Body(...)):
 # ── Chainlit chat (mounted last so the routes above take precedence) ───
 
 
-def _chat_data_layer():
+def _chat_data_layer() -> "MinioDataLayer | None":
     import chat_app
 
     return chat_app._data_layer

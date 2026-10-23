@@ -22,6 +22,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 from docling.datamodel.accelerator_options import AcceleratorOptions
 from docling.datamodel.base_models import ConversionStatus, InputFormat
@@ -84,7 +85,7 @@ def _pipeline_options(device: str = DOCLING_DEVICE) -> PdfPipelineOptions:
     ocr_cls = _OCR_OPTION_CLASSES.get(DOCLING_OCR_ENGINE)
     if ocr_cls is None:
         raise ValueError(f"Unsupported DOCLING_OCR_ENGINE: {DOCLING_OCR_ENGINE}")
-    ocr_kwargs = {"lang": DOCLING_OCR_LANG} if DOCLING_OCR_LANG else {}
+    ocr_kwargs: dict[str, Any] = {"lang": DOCLING_OCR_LANG} if DOCLING_OCR_LANG else {}
     if device.startswith("cuda") and ocr_cls is RapidOcrOptions:
         ocr_kwargs["backend"] = DOCLING_GPU_OCR_BACKEND
 

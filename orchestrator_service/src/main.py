@@ -21,6 +21,7 @@ from __future__ import annotations
 import json as _json
 import logging
 from contextlib import asynccontextmanager
+from typing import Any
 
 import clients
 import gpu_swap
@@ -124,7 +125,7 @@ def _parse(payload: dict) -> tuple[str, list[dict]]:
 async def health():
     llm_ok = await clients.healthy(clients.LLM_SERVICE_URL)
     rag_ok = await clients.healthy(clients.RAG_SERVICE_URL)
-    status = {
+    status: dict[str, Any] = {
         "status": "ok" if llm_ok and rag_ok else "degraded",
         "llm_service": "ok" if llm_ok else "down",
         "rag_service": "ok" if rag_ok else "down",

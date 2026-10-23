@@ -51,7 +51,9 @@ def build_filter(plan: QueryPlan, identity: Identity, broaden: bool) -> models.F
             must.append(
                 models.FieldCondition(
                     key="timestamp",
-                    range=models.DatetimeRange(gte=f.date_from or None, lte=f.date_to or None),
+                    range=models.DatetimeRange.model_validate(  # parses the ISO date strings
+                        {"gte": f.date_from or None, "lte": f.date_to or None}
+                    ),
                 )
             )
     return models.Filter(must=must)

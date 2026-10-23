@@ -96,11 +96,12 @@ async def load_index() -> None:
         assert minio is not None
         metas = []
         for obj in minio.list_objects(MINIO_BUCKET, prefix="documents/", recursive=True):
-            if obj.object_name.endswith("/meta.json"):
+            name = obj.object_name
+            if name and name.endswith("/meta.json"):
                 try:
-                    metas.append(_decode_meta(_get_object_bytes(obj.object_name)))
+                    metas.append(_decode_meta(_get_object_bytes(name)))
                 except (S3Error, ValueError, KeyError) as e:
-                    log.warning("skipping unreadable %s: %s", obj.object_name, e)
+                    log.warning("skipping unreadable %s: %s", name, e)
         return metas
 
     _index.clear()
@@ -156,7 +157,8 @@ async def _put_object(name: str, body: bytes, content_type: str) -> None:
             minio.put_object,
             MINIO_BUCKET,
             name,
-            data=_BytesReader(body),
+            # minio declares BinaryIO but only calls .read(), which _BytesReader provides.
+            data=_BytesReader(body),  # pyright: ignore[reportArgumentType]
             length=len(body),
             content_type=content_type,
         )
@@ -331,6 +333,7 @@ def _delete_minio_prefix(prefix: str) -> int:
     keys = [
         DeleteObject(obj.object_name)
         for obj in minio.list_objects(MINIO_BUCKET, prefix=prefix, recursive=True)
+        if obj.object_name
     ]
     if not keys:
         return 0

@@ -16,6 +16,7 @@ Results are on the [Actions tab](https://github.com/mdmonsurali/Advanced-Hybrid-
 | Job | What it checks | Services |
 |---|---|---|
 | `lint` | Full `ruff check` rule set (project exceptions in `ruff.toml`), and formatting (`ruff format --check`) | all |
+| `type-check` | `pyright` in basic mode (`pyrightconfig.json`), run against each service's real libraries | all 6 |
 | `compose` | `docker-compose.yml` is valid, using `.env.example` | n/a |
 | `dockerfile-check` | Dockerfile mistakes and bad practices (`docker buildx build --check`) | all 6 |
 | `build` | Image builds end to end | ui, auth, orchestrator, rag |
@@ -57,7 +58,22 @@ so they only get `lint` and `dockerfile-check`.
   - 2 one-line exceptions with reasons: `# noqa: SIM102` in `orchestrator_service/src/gpu_swap.py`,
     and `# noqa: S110` in `rag_service/src/ingestion/pipeline.py`.
   - About 10 were fixed by hand: merged `if`/`with`, narrowed one `except`, `Field(default_factory=set)`, and others.
-- [ ] **Step 9: Type checking.** Add `mypy` or `pyright`, review the results, then fix the issues or relax rules.
+- [x] **Step 9: Type checking.** `pyright` 1.1.414 in basic mode; config is in `pyrightconfig.json`.
+  - **CI job `type-check`:** one job per service. Each installs that service's real libraries (CPU-only
+    torch for rag/ocr; for llm, the versions from the SGLang base image) and runs pyright on its `src/`.
+  - **Result:** 130 issues (first run, in pyright's stricter default mode) went to 0.
+  - `reportPrivateImportUsage` is switched off. docling-core does not mark its public names as
+    re-exported, although `docling_core.types.doc` is its documented import path.
+  - **Real fixes:**
+    - `auth_service`: updating a deleted user now returns 404 instead of a 500.
+    - `rag_service` executors: a search route that fails with a non-`Exception` error
+      (e.g. a cancellation) is now marked unavailable instead of crashing the query.
+    - `rag_service` web fetch: stops on a redirect without a target.
+    - Clear errors replace silent `None` crashes: GPU lease missing, GPU worker not initialised,
+      embedding dimension missing, Qdrant collection without the named dense vector.
+  - **The rest:** type annotations, `None` checks pyright could not follow, and `cast` /
+    `# pyright: ignore[...]` with a reason for library type gaps (MinIO `BinaryIO`, Chainlit
+    `CommandDict`, Langfuse score overloads, docling `RefItem` alias).
 
 ### Phase 3: Tests
 
@@ -83,4 +99,8 @@ so they only get `lint` and `dockerfile-check`.
   (`auth_service llm_service ocr_service orchestrator_service rag_service ui_service langfuse_service`), run:
   - `ruff check --fix <folders>` to auto-fix lint issues, then fix whatever it still lists
   - `ruff format <folders>` to format the code
+- **Type check locally:** VS Code (Pylance) reads `pyrightconfig.json`, so the editor shows the same
+  errors as CI once the service's libraries are installed in the selected interpreter. To match CI on
+  the command line, run `pip install pyright==1.1.414 -r <service>/requirements.txt`, then
+  `pyright --pythonpath "$(which python)" <service>/src`.
 - **Secrets:** `.env` is gitignored and never reaches CI. CI uses `.env.example` (dummy values).

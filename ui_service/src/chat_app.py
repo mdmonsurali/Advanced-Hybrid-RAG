@@ -14,10 +14,13 @@ from __future__ import annotations
 import logging
 import os
 import re
+from typing import cast
 
 import auth_client
 import chainlit as cl
 from chainlit.config import config as cl_config
+from chainlit.data.base import BaseDataLayer
+from chainlit.types import CommandDict
 from chat import ingestion, mcp_tools, pipeline_stream, settings
 from chat.data_layer import MinioDataLayer
 from chat.identity import (
@@ -50,14 +53,14 @@ cl_config.project.user_session_timeout = int(os.getenv("SESSION_TTL_HOURS", "12"
 
 _SESSION_EXPIRED = "🔒 Your session has expired. [Sign in again](/login?next=/chat) to continue."
 
+_data_layer: MinioDataLayer | None = None
 if CHAT_HISTORY_ENABLED:
-    _data_layer = MinioDataLayer()
+    _history_layer = MinioDataLayer()
+    _data_layer = _history_layer
 
     @cl.data_layer
-    def get_data_layer():
-        return _data_layer
-else:
-    _data_layer = None
+    def get_data_layer() -> BaseDataLayer:
+        return _history_layer
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────
@@ -94,7 +97,9 @@ async def _init_session(history: list[dict] | None = None) -> None:
     values = await cl.ChatSettings(settings.widgets(role)).send()
     cl.user_session.set("settings", {**settings.DEFAULTS, **(values or {})})
     cl.user_session.set("history", history or [])
-    await cl.context.emitter.set_commands(settings.commands(role))
+    # CommandDict marks button/persistent/selected as required keys, but Chainlit's UI
+    # treats them as optional; sending them would change how the commands behave.
+    await cl.context.emitter.set_commands(cast("list[CommandDict]", settings.commands(role)))
 
 
 @cl.set_starters

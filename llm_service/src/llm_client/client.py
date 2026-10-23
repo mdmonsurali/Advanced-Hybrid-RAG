@@ -17,12 +17,16 @@ import asyncio
 import logging
 import os
 import re
-from typing import TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import httpx
 import tracing  # noqa: F401  (configures Langfuse before the wrapper loads)
 from langfuse.openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
+
+if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletionMessageParam
+    from openai.types.shared_params import ResponseFormatJSONSchema
 
 log = logging.getLogger("llm_service.client")
 
@@ -40,7 +44,7 @@ T = TypeVar("T", bound=BaseModel)
 
 _client: AsyncOpenAI | None = None
 _sem: asyncio.Semaphore | None = None
-_tokenizer = None
+_tokenizer: Any = None  # tokenizer once loaded, or False when it can't be loaded
 
 
 class LLMOutputError(RuntimeError):
@@ -69,6 +73,12 @@ def _langfuse_kwargs(messages: list[dict], name: str | None, attempt: int = 1) -
     return out
 
 
+def _typed(messages: list[dict]) -> list[ChatCompletionMessageParam]:
+    """Plain copy of the prompt's message dicts, typed for the OpenAI client.
+    prompts/ builds them as {"role": ..., "content": ...}, which is exactly that shape."""
+    return cast("list[ChatCompletionMessageParam]", list(messages))
+
+
 def _clean(text: str) -> str:
     """Drop any reasoning block and code fences the model may still emit."""
     text = _THINK_RE.sub("", text or "").strip()
@@ -89,7 +99,7 @@ async def chat_text(
     async with _sem:
         resp = await client.chat.completions.create(
             model=MODEL_NAME,
-            messages=list(messages),
+            messages=_typed(messages),
             temperature=temperature,
             max_tokens=max_tokens,
             extra_body=_NO_THINKING,
@@ -110,7 +120,7 @@ async def chat_json(
     slightly higher temperature before giving up."""
     client = _get_client()
     assert _sem is not None
-    response_format = {
+    response_format: ResponseFormatJSONSchema = {
         "type": "json_schema",
         "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()},
     }
@@ -119,7 +129,7 @@ async def chat_json(
         async with _sem:
             resp = await client.chat.completions.create(
                 model=MODEL_NAME,
-                messages=list(messages),
+                messages=_typed(messages),
                 temperature=temp,
                 max_tokens=max_tokens,
                 response_format=response_format,

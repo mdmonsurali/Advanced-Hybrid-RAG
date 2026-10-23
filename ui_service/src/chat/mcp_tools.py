@@ -20,6 +20,7 @@ import logging
 import os
 
 import chainlit as cl
+from chainlit.session import WebsocketSession
 
 from chat import backend
 
@@ -69,9 +70,9 @@ def _result_text(result) -> str:
         if getattr(block, "type", None) == "text":
             parts.append(block.text)
         elif getattr(block, "type", None) == "resource":
-            res = getattr(block, "resource", None)
-            if getattr(res, "text", None):
-                parts.append(res.text)
+            text = getattr(getattr(block, "resource", None), "text", None)
+            if text:
+                parts.append(text)
     if not parts and getattr(result, "structuredContent", None):
         parts.append(json.dumps(result.structuredContent, ensure_ascii=False, indent=2))
     return "\n\n".join(parts).strip()
@@ -79,7 +80,10 @@ def _result_text(result) -> str:
 
 async def _call(call: dict, idx: int) -> dict | None:
     server, name = call["server"], call["name"]
-    mcp_session = cl.context.session.mcp_sessions.get(server)
+    session = cl.context.session
+    if not isinstance(session, WebsocketSession):  # MCP connections only exist over websocket
+        return None
+    mcp_session = session.mcp_sessions.get(server)
     if mcp_session is None:
         return None
     args = json.loads(call.get("arguments_json") or "{}")

@@ -35,7 +35,10 @@ async def ensure_collection(dense_dim: int, embed_model: str) -> None:
     assert client is not None
     if await client.collection_exists(QDRANT_COLLECTION):
         info = await client.get_collection(QDRANT_COLLECTION)
-        size = info.config.params.vectors[DENSE].size
+        vectors = info.config.params.vectors
+        if not isinstance(vectors, dict) or DENSE not in vectors:
+            raise RuntimeError(f"collection {QDRANT_COLLECTION} has no named '{DENSE}' vector")
+        size = vectors[DENSE].size
         if size != dense_dim:
             raise RuntimeError(
                 f"collection {QDRANT_COLLECTION} has dense size {size}, model gives "

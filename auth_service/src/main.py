@@ -311,6 +311,8 @@ async def admin_update_user(user_id: str, body: UpdateUserRequest, session=Depen
         return _user_out(target)
 
     updated = await db.update_user(uid, **updates)
+    if updated is None:  # deleted between the lookup above and this update
+        raise HTTPException(404, "User not found")
     # If we rotated password or disabled, revoke their sessions.
     if "password_hash" in updates or updates.get("disabled"):
         await db.delete_user_sessions(uid)

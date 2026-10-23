@@ -5,6 +5,7 @@ fallback)."""
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 
 import httpx
 import tracing
@@ -33,7 +34,7 @@ async def describe_figure(image_b64: str, mime: str, caption: str, context: str)
     )
 
 
-async def route(plan: dict, available: list[str]) -> dict:
+async def route(plan: dict, available: Sequence[str]) -> dict:
     return await _post("/tasks/route", {"plan": plan, "available_routes": available})
 
 

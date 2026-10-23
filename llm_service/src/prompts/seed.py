@@ -24,7 +24,7 @@ from prompts import registry
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").strip().split("\n")[0])
     parser.add_argument(
         "--update", action="store_true", help="publish changed local texts as new versions"
     )

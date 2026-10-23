@@ -22,6 +22,7 @@ from collections.abc import Callable
 from docling_core.types.doc import (
     DocItemLabel,
     DoclingDocument,
+    FloatingItem,
     NodeItem,
     PictureItem,
     TableItem,
@@ -52,7 +53,7 @@ def preceding_paragraph(doc: DoclingDocument, target: NodeItem) -> str | None:
     return None
 
 
-def context_lines(doc: DoclingDocument, item: NodeItem, kind: str) -> list[str]:
+def context_lines(doc: DoclingDocument, item: FloatingItem, kind: str) -> list[str]:
     """The caption (first, prefixed with `kind` unless it already starts
     with it) plus the explanatory paragraph before the item."""
     lines: list[str] = []
