@@ -1,0 +1,62 @@
+# CD: after CI passes on main (i.e. after a merge), publish the service images to GitHub
+# Container Registry as ghcr.io/<owner>/ahr-<service>, tagged with the commit SHA and latest.
+# ocr_service (~16 GB) and llm_service (~64 GB) are too big for a GitHub runner, so they
+# are still built locally.
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    # Only a CI run for a push to main that passed (not a failed one, not a pull request).
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { service: ui_service, image: ahr-ui, context: ui_service }
+          - { service: auth_service, image: ahr-auth, context: . }
+          - { service: orchestrator_service, image: ahr-orchestrator, context: . }
+          - { service: rag_service, image: ahr-rag, context: . }
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # The commit CI tested, not whatever main points to by now.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+
+      # GITHUB_TOKEN is created for this run only; packages: write lets it push.
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # The source label links the package to this repository, so it gets the repo's
+      # visibility (public) and shows up on the repo page.
+      - name: Build
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          NAME="ghcr.io/${OWNER,,}/${{ matrix.image }}"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          docker build -f ${{ matrix.service }}/Dockerfile ${{ matrix.context }} \
+            --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
+            --label org.opencontainers.image.revision=$SHA \
+            -t "$NAME:$SHA" -t "$NAME:latest"
+
+      - name: Push
+        run: |
+          docker push "$NAME:$SHA"
+          docker push "$NAME:latest"

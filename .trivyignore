@@ -1,0 +1,8 @@
+# Trivy findings accepted on purpose (one ID per line).
+
+# DS-0002: the containers run as root. Switching to a non-root USER needs the named volumes,
+# the Docker socket (orchestrator) and the GPU setup (llm) reworked; tracked as a follow-up.
+DS-0002
+
+# DS-0031: false positive. AUTH_DATA_FILE (auth_service) is a file path, not a secret.
+DS-0031

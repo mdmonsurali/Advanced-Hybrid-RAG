@@ -4,7 +4,8 @@ WORKDIR /workspace
 
 # libreoffice: DOCX export (HTML -> DOCX) and the DOCX -> PDF preview.
 # libgl1/libglib2.0-0: OpenCV runtime used by Docling's OCR/layout stack.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# upgrade: pick up Debian security fixes newer than the base image.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     procps \
     libreoffice-writer \

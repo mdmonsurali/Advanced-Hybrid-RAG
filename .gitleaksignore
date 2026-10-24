@@ -1,0 +1,7 @@
+# Findings gitleaks may skip (one fingerprint per line).
+#
+# .env was committed in the initial commit (053e05b) and removed in 8de6b28. The repo is
+# public, so these two values are exposed for good: they must be replaced in .env (rotated),
+# not just ignored here.
+053e05b4453346001cb3ff81cc756154941fcb9e:.env:generic-api-key:50
+053e05b4453346001cb3ff81cc756154941fcb9e:.env:generic-api-key:65

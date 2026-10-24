@@ -7,6 +7,13 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # Pinned by digest: Trivy's release tags were hijacked in March 2026 (CVE-2026-33634);
+  # 0.69.3 predates that and a digest cannot be moved.
+  TRIVY: aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
+  # Built-image scan: OS and Python packages with a fix available, HIGH and CRITICAL only.
+  TRIVY_IMAGE_ARGS: image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -72,6 +79,38 @@ jobs:
         working-directory: ${{ matrix.service }}
         run: python -m pytest -q
 
+      # Every installed package, including the ones pulled in indirectly, against the
+      # Python vulnerability database. Fix by pinning a fixed version in requirements.txt.
+      - name: Vulnerable packages
+        run: |
+          pip install pip-audit==2.10.1
+          pip-audit --progress-spinner off
+
+  # Passwords, tokens and keys committed anywhere in the git history.
+  # Known findings that were already dealt with are listed in .gitleaksignore.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - run: >
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0
+          git /repo --no-banner --redact --gitleaks-ignore-path /repo/.gitleaksignore
+
+  # Trivy: known vulnerabilities in the pinned requirements, and Dockerfile mistakes.
+  # Accepted findings are listed in .trivyignore.
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - run: >
+          docker run --rm -v "$PWD:/repo" -w /repo $TRIVY
+          fs . --scanners vuln,misconfig --severity HIGH,CRITICAL --exit-code 1
+          --ignorefile .trivyignore --skip-dirs .git
+
   compose:
     runs-on: ubuntu-latest
     steps:
@@ -101,7 +140,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [orchestrator_service]
+        include:
+          - { service: orchestrator_service, image: ahr-orchestrator }
     steps:
       - uses: actions/checkout@v5
 
@@ -112,6 +152,11 @@ jobs:
           df -h /
 
       - run: docker compose --env-file .env.example build ${{ matrix.service }}
+
+      - name: Scan image
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $TRIVY $TRIVY_IMAGE_ARGS
+          ${{ matrix.image }}:latest
 
   # The non-GPU part of the stack running together: auth_service, ui_service, rag_service
   # (CPU models), Qdrant and MinIO, driven over HTTP by tests/integration.
@@ -143,6 +188,12 @@ jobs:
       - name: Integration tests
         working-directory: tests/integration
         run: python -m pytest -v
+
+      - name: Scan images
+        run: |
+          for image in ahr-auth ahr-rag ahr-ui; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $TRIVY $TRIVY_IMAGE_ARGS $image:latest
+          done
 
       - name: Container logs
         if: failure()
