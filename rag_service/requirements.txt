@@ -12,7 +12,7 @@ docling-core[chunking]==2.104.0
 # Embeddings: dense (Qwen3-Embedding), reranker (Qwen3-Reranker), sparse BM25
 sentence-transformers==6.1.0
 transformers==5.19.0
-fastembed==0.9.0
+fastembed==0.9.1  # 0.9.1: first release that allows pillow 13
 
 # Vector DB
 qdrant-client==1.19.1

@@ -55,7 +55,12 @@ jobs:
           - { service: rag_service, python: "3.12", pre: "torch --index-url https://download.pytorch.org/whl/cpu" }
           - { service: ocr_service, python: "3.12", pre: "torch torchvision --index-url https://download.pytorch.org/whl/cpu" }
           # llm_service gets these from the lmsysorg/sglang base image, not requirements.txt.
-          - { service: llm_service, python: "3.12", extra: "fastapi==0.135.3 pydantic==2.12.5 httpx==0.28.1 transformers==5.3.0 openai==2.6.1" }
+          # Its transformers 5.3.0 is fixed by the SGLang release; the three advisories need an
+          # untrusted model repo or save_pretrained, and llm_service only loads its own model.
+          - service: llm_service
+            python: "3.12"
+            extra: "fastapi==0.135.3 pydantic==2.12.5 httpx==0.28.1 transformers==5.3.0 openai==2.6.1"
+            audit_ignore: "--ignore-vuln PYSEC-2026-2290 --ignore-vuln PYSEC-2026-3929 --ignore-vuln PYSEC-2026-4174"
     steps:
       - uses: actions/checkout@v5
 
@@ -84,7 +89,7 @@ jobs:
       - name: Vulnerable packages
         run: |
           pip install pip-audit==2.10.1
-          pip-audit --progress-spinner off
+          pip-audit --progress-spinner off ${{ matrix.audit_ignore }}
 
   # Passwords, tokens and keys committed anywhere in the git history.
   # Known findings that were already dealt with are listed in .gitleaksignore.
