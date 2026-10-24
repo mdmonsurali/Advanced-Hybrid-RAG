@@ -1,7 +1,7 @@
 # CI/CD
 
-CI/CD for this repo runs on **GitHub Actions**. The workflow file is
-[.github/workflows/ci.yml](.github/workflows/ci.yml).
+CI/CD for this repo runs on **GitHub Actions**. The workflow files are
+[.github/workflows/ci.yml](.github/workflows/ci.yml) and [.github/workflows/cd.yml](.github/workflows/cd.yml).
 
 - **CI (Continuous Integration):** every pull request and every push to `main` is checked
   automatically on GitHub's machines (lint, type checks, unit and integration tests, Docker builds).
@@ -16,11 +16,14 @@ Results are on the [Actions tab](https://github.com/mdmonsurali/Advanced-Hybrid-
 | Job | What it checks | Services |
 |---|---|---|
 | `lint` | Full `ruff check` rule set (project exceptions in `ruff.toml`), and formatting (`ruff format --check`) | all |
-| `test` | Per service, with its real libraries: `pyright` in basic mode (`pyrightconfig.json`), then the unit tests in `<service>/tests` | all 6 |
+| `test` | Per service, with its real libraries: `pyright` in basic mode (`pyrightconfig.json`), the unit tests in `<service>/tests`, then `pip-audit` on every installed package | all 6 |
+| `secrets` | `gitleaks` over the whole git history (accepted findings in `.gitleaksignore`) | n/a |
+| `trivy` | Trivy: vulnerable pins in every `requirements.txt`, and Dockerfile misconfigurations (accepted in `.trivyignore`) | all 6 |
 | `compose` | `docker-compose.yml` is valid, using `.env.example` | n/a |
 | `dockerfile-check` | Dockerfile mistakes and bad practices (`docker buildx build --check`) | all 6 |
-| `build` | Image builds end to end | orchestrator |
-| `integration` | Builds and starts auth, ui and rag (CPU models) with Qdrant and MinIO, then runs `tests/integration` against them over HTTP | auth, ui, rag |
+| `build` | Image builds end to end, then a Trivy scan of the image | orchestrator |
+| `integration` | Builds and starts auth, ui and rag (CPU models) with Qdrant and MinIO, runs `tests/integration` against them over HTTP, then Trivy-scans the three images | auth, ui, rag |
+| `CD / publish` | After CI passes on `main`: pushes the images to `ghcr.io/mdmonsurali/ahr-<service>` (tags: commit SHA and `latest`) | ui, auth, orchestrator, rag |
 
 `ocr_service` (~16 GB) and `llm_service` (~64 GB) are too large to build on a free GitHub runner,
 and need a GPU, so they get `lint`, `test` and `dockerfile-check` but no image build.
@@ -104,10 +107,26 @@ and need a GPU, so they get `lint`, `test` and `dockerfile-check` but no image b
 
 ### Phase 4: Security and delivery
 
-- [ ] **Step 12: Security scans.** Vulnerable packages (`pip-audit`), leaked secrets
-  (`gitleaks`), image vulnerabilities (Trivy).
-- [ ] **Step 13: CD.** Publish images to GitHub Container Registry (ghcr.io) on each merge to
-  `main`, so the stack can be updated with `docker compose pull && docker compose up -d`.
+- [x] **Step 12: Security scans.** All scans fail CI on HIGH / CRITICAL findings.
+  - `pip-audit` (in each `test` job): every installed package, including indirect ones.
+  - `gitleaks` (job `secrets`): the full git history. It found `.env` in the initial commit
+    (`053e05b`) with the real `MCP_TOKEN` and `CHAINLIT_AUTH_SECRET`. The repo is public, so
+    both must be **rotated** (new values in `.env`); `.gitleaksignore` only stops the old
+    finding from failing CI.
+  - Trivy (job `trivy`, and an image scan in `build` / `integration`), pinned by digest to
+    0.69.3 because Trivy's release tags were hijacked in March 2026 (CVE-2026-33634).
+  - Fixed: python-multipart 0.0.32 (auth, ocr), pillow 13.0.0 (ocr, rag), docling 2.142.1
+    (ocr, needed for pillow 13), docling-core 2.104.0, fastmcp 4.1.3, pypdf 6.21.2,
+    filelock 4.2.4 (rag), setuptools 84.2.1 (auth, rag), and `apt-get upgrade` in the
+    Dockerfiles for Debian security fixes.
+  - Accepted for now (`.trivyignore`): containers run as root (DS-0002); switching to a
+    non-root user needs the volumes, Docker socket and GPU setup reworked.
+- [x] **Step 13: CD.** [.github/workflows/cd.yml](.github/workflows/cd.yml) runs after CI passes
+  on `main` and publishes ui, auth, orchestrator and rag to GitHub Container Registry (free for
+  public repos, uses the built-in `GITHUB_TOKEN`). To run them instead of building, set
+  `AHR_REGISTRY=ghcr.io/mdmonsurali/` in `.env`, then
+  `docker compose pull ui_service auth_service rag_service orchestrator_service` and
+  `docker compose up -d`. ocr and llm are still built locally (too big for a runner).
 
 ## Notes
 

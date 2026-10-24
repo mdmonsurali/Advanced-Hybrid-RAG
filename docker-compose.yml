@@ -6,7 +6,7 @@ services:
     build:
       context: ./ui_service
       dockerfile: Dockerfile
-    image: ahr-ui:latest
+    image: ${AHR_REGISTRY:-}ahr-ui:${AHR_TAG:-latest}
     container_name: ui_service
     ports:
       - "${UI_SERVICE_PORT:-8000}:8000"
@@ -52,7 +52,7 @@ services:
     build:
       context: .
       dockerfile: auth_service/Dockerfile
-    image: ahr-auth:latest
+    image: ${AHR_REGISTRY:-}ahr-auth:${AHR_TAG:-latest}
     container_name: auth_service
     ports:
       - "${AUTH_SERVICE_PORT:-8002}:8002"
@@ -139,7 +139,7 @@ services:
       args:
         EMBED_MODEL: ${EMBED_MODEL:-Qwen/Qwen3-Embedding-0.6B}
         RERANK_MODEL: ${RERANK_MODEL:-Qwen/Qwen3-Reranker-0.6B}
-    image: ahr-rag:latest
+    image: ${AHR_REGISTRY:-}ahr-rag:${AHR_TAG:-latest}
     container_name: rag_service
     environment:
       - RAG_SERVICE_PORT=8003
@@ -257,7 +257,7 @@ services:
     build:
       context: .
       dockerfile: orchestrator_service/Dockerfile
-    image: ahr-orchestrator:latest
+    image: ${AHR_REGISTRY:-}ahr-orchestrator:${AHR_TAG:-latest}
     container_name: orchestrator_service
     environment:
       - ORCHESTRATOR_SERVICE_PORT=8004

@@ -7,6 +7,13 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # Pinned by digest: Trivy's release tags were hijacked in March 2026 (CVE-2026-33634);
+  # 0.69.3 predates that and a digest cannot be moved.
+  TRIVY: aquasec/trivy:0.69.3@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
+  # Built-image scan: OS and Python packages with a fix available, HIGH and CRITICAL only.
+  TRIVY_IMAGE_ARGS: image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -48,7 +55,12 @@ jobs:
           - { service: rag_service, python: "3.12", pre: "torch --index-url https://download.pytorch.org/whl/cpu" }
           - { service: ocr_service, python: "3.12", pre: "torch torchvision --index-url https://download.pytorch.org/whl/cpu" }
           # llm_service gets these from the lmsysorg/sglang base image, not requirements.txt.
-          - { service: llm_service, python: "3.12", extra: "fastapi==0.135.3 pydantic==2.12.5 httpx==0.28.1 transformers==5.3.0 openai==2.6.1" }
+          # Its transformers 5.3.0 is fixed by the SGLang release; the three advisories need an
+          # untrusted model repo or save_pretrained, and llm_service only loads its own model.
+          - service: llm_service
+            python: "3.12"
+            extra: "fastapi==0.135.3 pydantic==2.12.5 httpx==0.28.1 transformers==5.3.0 openai==2.6.1"
+            audit_ignore: "--ignore-vuln PYSEC-2026-2290 --ignore-vuln PYSEC-2026-3929 --ignore-vuln PYSEC-2026-4174"
     steps:
       - uses: actions/checkout@v5
 
@@ -71,6 +83,38 @@ jobs:
       - name: Unit tests
         working-directory: ${{ matrix.service }}
         run: python -m pytest -q
+
+      # Every installed package, including the ones pulled in indirectly, against the
+      # Python vulnerability database. Fix by pinning a fixed version in requirements.txt.
+      - name: Vulnerable packages
+        run: |
+          pip install pip-audit==2.10.1
+          pip-audit --progress-spinner off ${{ matrix.audit_ignore }}
+
+  # Passwords, tokens and keys committed anywhere in the git history.
+  # Known findings that were already dealt with are listed in .gitleaksignore.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - run: >
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0
+          git /repo --no-banner --redact --gitleaks-ignore-path /repo/.gitleaksignore
+
+  # Trivy: known vulnerabilities in the pinned requirements, and Dockerfile mistakes.
+  # Accepted findings are listed in .trivyignore.
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - run: >
+          docker run --rm -v "$PWD:/repo" -w /repo $TRIVY
+          fs . --scanners vuln,misconfig --severity HIGH,CRITICAL --exit-code 1
+          --ignorefile .trivyignore --skip-dirs .git
 
   compose:
     runs-on: ubuntu-latest
@@ -101,7 +145,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [orchestrator_service]
+        include:
+          - { service: orchestrator_service, image: ahr-orchestrator }
     steps:
       - uses: actions/checkout@v5
 
@@ -112,6 +157,11 @@ jobs:
           df -h /
 
       - run: docker compose --env-file .env.example build ${{ matrix.service }}
+
+      - name: Scan image
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $TRIVY $TRIVY_IMAGE_ARGS
+          ${{ matrix.image }}:latest
 
   # The non-GPU part of the stack running together: auth_service, ui_service, rag_service
   # (CPU models), Qdrant and MinIO, driven over HTTP by tests/integration.
@@ -143,6 +193,12 @@ jobs:
       - name: Integration tests
         working-directory: tests/integration
         run: python -m pytest -v
+
+      - name: Scan images
+        run: |
+          for image in ahr-auth ahr-rag ahr-ui; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $TRIVY $TRIVY_IMAGE_ARGS $image:latest
+          done
 
       - name: Container logs
         if: failure()

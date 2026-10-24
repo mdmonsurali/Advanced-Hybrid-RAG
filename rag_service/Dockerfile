@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /workspace
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# upgrade: pick up Debian security fixes newer than the base image.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # CPU-only torch: embeddings and reranking run on CPU so the GPU stays free

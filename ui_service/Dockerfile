@@ -6,7 +6,8 @@ ENV PYTHONUNBUFFERED=1 \
     # and writes uploaded chat files to $CHAINLIT_APP_ROOT/.files.
     CHAINLIT_APP_ROOT=/app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# upgrade: pick up Debian security fixes newer than the base image.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

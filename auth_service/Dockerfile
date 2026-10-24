@@ -4,7 +4,9 @@ FROM python:3.11.15-slim-trixie
 
 ENV PYTHONUNBUFFERED=1
 
+# upgrade: pick up Debian security fixes newer than the base image.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install --no-install-recommends -y curl \
  && rm -rf /var/lib/apt/lists/*
 
